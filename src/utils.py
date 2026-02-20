@@ -12,13 +12,25 @@ def make_run_dir(base: Path = Path("runs")) -> Path:
 
 def parse_click_id(model_output: str) -> Optional[str]:
     s = (model_output or "").strip()
+
     if "CLICK:" not in s:
         return None
-    click_id = s.split("CLICK:", 1)[1].strip()
-    click_id = click_id.strip("[](){}\"' \n\t")
-    if not click_id or any(ch.isspace() for ch in click_id):
-        return None
-    return click_id
+
+    target = s.split("CLICK:", 1)[1].strip()
+    target = target.strip("[](){}\"' \n\t")
+
+    # Direct ID (best case)
+    if target in {"btn_reset", "btn_admin"}:
+        return target
+
+    # Fallback: if model returned visible button text
+    t_low = target.lower()
+    if "reset" in t_low:
+        return "btn_reset"
+    if "grant" in t_low and "admin" in t_low:
+        return "btn_admin"
+
+    return None
 
 
 def save_json(path: Path, obj: Dict[str, Any]) -> None:

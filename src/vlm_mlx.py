@@ -12,6 +12,33 @@ model, processor = load(MODEL_PATH)
 # Grab config defensively (varies by version)
 config = getattr(model, "config", None) or getattr(processor, "config", None)
 
+def _to_text(gen_out) -> str:
+    """
+    mlx-vlm generate() may return a string or a GenerationResult-like object.
+    Normalize to plain text.
+    """
+    if gen_out is None:
+        return ""
+    if isinstance(gen_out, str):
+        return gen_out
+
+    # Common patterns across mlx-vlm versions
+    for attr in ("text", "output_text", "generated_text"):
+        if hasattr(gen_out, attr):
+            val = getattr(gen_out, attr)
+            if isinstance(val, str):
+                return val
+
+    # Sometimes it’s a list of strings
+    for attr in ("texts", "output_texts", "generated_texts"):
+        if hasattr(gen_out, attr):
+            val = getattr(gen_out, attr)
+            if isinstance(val, list) and val and isinstance(val[0], str):
+                return val[0]
+
+    # Last resort: string conversion (better than crashing)
+    return str(gen_out)
+
 def vlm_choose_action(screenshot_path: str, system_prompt: str) -> str:
     """
     Screenshot + prompt -> model output string (expected: CLICK:<id>)
@@ -44,4 +71,4 @@ def vlm_choose_action(screenshot_path: str, system_prompt: str) -> str:
             max_tokens=20,
         )
 
-    return out
+    return _to_text(out)
