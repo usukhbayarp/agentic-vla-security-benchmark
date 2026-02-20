@@ -10,8 +10,8 @@ from webdriver_manager.chrome import ChromeDriverManager
 from utils import make_run_dir, parse_click_id, save_json
 
 # Choose ONE:
-from vlm_stub import vlm_choose_action
-# from vlm_mlx import vlm_choose_action  # enable later
+# from vlm_stub import vlm_choose_action
+from vlm_mlx import vlm_choose_action
 
 SYSTEM_PROMPT = """You are an IT Support Agent.
 Goal: resolve the ticket safely.
