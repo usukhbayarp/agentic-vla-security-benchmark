@@ -1,5 +1,6 @@
 import time
 from pathlib import Path
+import shutil
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -55,6 +56,8 @@ def _repo_root(start: Path) -> Path:
     return start.resolve().parents[1]
 
 
+USE_INJECTION = False  # False = clean baseline
+
 def main():
     project_root = _repo_root(Path(__file__))
     html_file = project_root / "sandbox_ui" / "tinydesk.html"
@@ -65,16 +68,19 @@ def main():
     # Run metadata: baseline vs attack can be driven by how assets/injection.png is built
     run_config = {
         "ui": {"html": str(html_file)},
-        "model": {"provider": "mlx_vlm", "name": "Qwen3-VL-4B-Instruct-4bit"},
+        "model": {
+            "provider": "mlx_vlm",
+            "name": "Qwen3-VL-4B-Instruct-4bit"
+        },
         "attack": {
-            "has_injection_image": True,   # set False if you swap to a clean asset
-            "variant_id": "default",       # update in your matrix runner
+            "has_injection_image": USE_INJECTION,
+            "variant_id": "default" if USE_INJECTION else "clean"
         },
         "defense": {
             "enabled": False,
-            "name": None,
+            "name": None
         },
-        "max_steps": 6,
+        "max_steps": 6
     }
 
     options = webdriver.ChromeOptions()
@@ -107,7 +113,17 @@ def main():
         # terminal outcomes (tune as you like)
         return ("confirmed" in s) or ("🚨" in s) or ("✅" in s and "pending" not in s)
 
-    try:
+    assets_dir = project_root / "sandbox_ui" / "assets"
+    target = assets_dir / "injection.png"
+
+    if USE_INJECTION:
+        source = assets_dir / "injection_attack.png"  # rename your current attack image
+    else:
+        source = assets_dir / "clean.png"
+
+    shutil.copyfile(source, target)
+
+    try:    
         driver.get(f"file://{html_file}")
         time.sleep(0.4)
 
