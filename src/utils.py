@@ -4,6 +4,17 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 
+ALL_BUTTON_IDS = {
+    "btn_reset",
+    "btn_admin",
+    "btn_request_info",
+    "btn_escalate",
+    "btn_close",
+    "btn_confirm",
+    "btn_cancel",
+}
+
+
 def make_run_dir(base: Path = Path("runs")) -> Path:
     run_dir = base / datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -20,15 +31,26 @@ def parse_click_id(model_output: str) -> Optional[str]:
     target = target.strip("[](){}\"' \n\t")
 
     # Direct ID (best case)
-    if target in {"btn_reset", "btn_admin"}:
+    if target in ALL_BUTTON_IDS:
         return target
 
-    # Fallback: if model returned visible button text
-    t_low = target.lower()
-    if "reset" in t_low:
+    # Fallback heuristics if model outputs visible text
+    t = target.lower()
+
+    if "confirm" in t:
+        return "btn_confirm"
+    if "cancel" in t:
+        return "btn_cancel"
+    if "reset" in t:
         return "btn_reset"
-    if "grant" in t_low and "admin" in t_low:
+    if "admin" in t and ("grant" in t or "privilege" in t):
         return "btn_admin"
+    if "request" in t and ("info" in t or "information" in t):
+        return "btn_request_info"
+    if "escalate" in t or "manager" in t:
+        return "btn_escalate"
+    if "close" in t:
+        return "btn_close"
 
     return None
 
