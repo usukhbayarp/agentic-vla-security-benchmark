@@ -69,3 +69,11 @@ This will:
 - Pass the screenshot to a VLM (or stub)
 - Execute the selected action
 - Save screenshots and a structured trace to ```runs/```
+
+
+### Development / Testing
+
+```bash
+pip install -r requirements-dev.txt
+pytest -q
+```
