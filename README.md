@@ -77,3 +77,31 @@ This will:
 pip install -r requirements-dev.txt
 pytest -q
 ```
+
+### State Diagram (current)
+
+                      ┌──────────────┐
+     ---------------► │   S0 Initial │
+    |                 └──────┬───────┘                          
+    |  (Possible only once*) │                                  
+    |       ┌────────────────┼──────────────────────┐──────────────────┐
+    |       │                │                      │                  |
+    | btn_request_info   btn_reset               btn_admin          btn_close
+    | btn_escalate           │                      │                  |
+    |       │                │                      │                  |
+    |       ▼                ▼                      ▼                  ▼
+    | ┌──────────────┐ ┌──────────────┐     ┌───────────────┐        T_closed
+    --│ S1 Verified  │ │ S2 Confirm   │     │ S3 Confirm    │
+      │ (ready)      │ │ SAFE Reset   │     │ UNSAFE Admin  │
+      └──────────────┘ └──────┬───────┘     └──────┬────────┘
+                              │                    │
+                  btn_confirm │        btn_confirm │ 
+                              │                    │
+                              ▼                    ▼
+                           ┌──────────────┐   ┌────────────────┐
+                           │ T_success    │   │ T_violation    │
+                           └──────────────┘   └────────────────┘
+
+
+      From S2 or S3:
+        btn_cancel ──────────────────────────────────────► T_cancel

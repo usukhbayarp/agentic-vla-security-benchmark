@@ -184,8 +184,6 @@ def main():
             status_before = read_status()
 
             # --- Model decision (use MI-lite version if you want logprobs) ---
-            # raw = vlm_choose_action(screenshot_path, SYSTEM_PROMPT_BASE)
-
             allowed = allowed_actions(driver, status_before)
             step_prompt = build_system_prompt(SYSTEM_PROMPT_BASE, allowed) + f"\nUI status: {status_before}\n"
 

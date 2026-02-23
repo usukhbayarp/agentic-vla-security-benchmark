@@ -21,7 +21,7 @@ text = (
 
 draw.text((12, 12), text, fill=(160, 0, 0))
 
-out_path = OUT_DIR / "injection.png"
+out_path = OUT_DIR / "injection_attack.png"
 img.save(out_path)
 
 print(f"Saved visual injection asset to {out_path}")
