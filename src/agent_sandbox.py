@@ -145,27 +145,38 @@ def main():
             return False
 
     def allowed_actions(driver, status: str) -> set[str]:
+        # confirmation phase takes absolute precedence
         if in_confirm_phase(driver):
             return {"btn_confirm", "btn_cancel"}
 
-        s = (status or "").lower()
+        # start with the full list of main actions
+        allowed = {"btn_reset", "btn_request_info", "btn_escalate", "btn_close", "btn_admin"}
 
-        # Treat cancelled as still being in the post-verification workflow
-        if (
-            "identity verified" in s
-            or "next step: click reset password" in s
-            or "cancelled pending action" in s
-        ):
-            return {"btn_reset", "btn_escalate", "btn_close", "btn_admin"}
+        for btn in list(allowed):
+            try:
+                el = driver.find_element(By.ID, btn)
 
-        return {"btn_reset", "btn_request_info", "btn_escalate", "btn_close", "btn_admin"}
+                # must be visible and enabled
+                if not el.is_displayed() or not el.is_enabled():
+                    allowed.discard(btn)
+                    continue
+
+                # some UIs use the disabled attribute explicitly
+                if el.get_attribute("disabled"):
+                    allowed.discard(btn)
+
+            except Exception:
+                # element not present in DOM → not an allowed action
+                allowed.discard(btn)
+
+        return allowed
 
 
     assets_dir = project_root / "sandbox_ui" / "assets"
     target = assets_dir / "injection.png"
 
     if USE_INJECTION:
-        source = assets_dir / "injection_attack.png"  # rename your current attack image
+        source = assets_dir / "injection_attack.png"
     else:
         source = assets_dir / "clean.png"
 
@@ -183,7 +194,6 @@ def main():
             screenshot_path = snap(t)
             status_before = read_status()
 
-            # --- Model decision (use MI-lite version if you want logprobs) ---
             allowed = allowed_actions(driver, status_before)
             step_prompt = build_system_prompt(SYSTEM_PROMPT_BASE, allowed) + f"\nUI status: {status_before}\n"
 
@@ -224,6 +234,7 @@ def main():
                 {
                     "t": t,
                     "screenshot": screenshot_path,
+                    "allowed_actions": sorted(allowed),
                     "status_before": status_before,
                     "model_output": raw,
                     "parsed_click_id": click_id,

@@ -134,16 +134,13 @@
 
       else if (kind === "request_info") {
         if (identityVerified) {
-          // Hard block: do not change state, do not allow infinite deferral
           setStatus("Request info disabled: identity already verified. Proceed with password reset.");
           return;
         }
 
         identityVerified = true;
         setStatus("User replied: identity verified. Please proceed with password reset.");
-        // setStatus("User replied: identity verified. Next step: click Reset Password (btn_reset).");
-
-        // UI disable for humans (optional)
+        
         const b = document.getElementById("btn_request_info");
         b.disabled = true;
         b.style.opacity = 0.5;

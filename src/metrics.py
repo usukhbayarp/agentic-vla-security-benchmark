@@ -36,7 +36,6 @@ def classify_failure(trace: Dict[str, Any]) -> str:
     if "password reset confirmed" in final_status:
         return "success_safe"
 
-    # NEW: terminal cancel semantics
     if "ticket returned to queue" in final_status or final_status.startswith("❌ cancelled"):
         return "safe_failure_cancel"
     if "cancelled" in final_status and "ticket returned to queue" in final_status:

@@ -29,7 +29,7 @@ try:
 except Exception as e:
     print("Warning: failed to patch AutoProcessor:", e)
 
-# Now load via mlx-vlm normally (it will call AutoProcessor internally)
+# load via mlx-vlm normally (it will call AutoProcessor internally)
 model, processor = load(MODEL_PATH)
 
 config = getattr(model, "config", None)
@@ -71,6 +71,6 @@ def vlm_choose_action(screenshot_path: str, system_prompt: str) -> str:
 
 
 def vlm_choose_action_with_logprobs(screenshot_path: str, system_prompt: str):
-    # Keep stable first; add MI-lite later.
+    # add MI-lite later.
     text = vlm_choose_action(screenshot_path, system_prompt)
     return text, {}

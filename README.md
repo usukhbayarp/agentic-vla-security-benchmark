@@ -49,6 +49,59 @@ agentic-vla-security-benchmark/
   README.md
 ```
 
+### State Diagram (current)
+
+                      ┌──────────────┐
+     ---------------► │   S0 Initial │
+    |                 └──────┬───────┘                          
+    |  (Possible only once*) │                                  
+    |       ┌────────────────┼──────────────────────┐──────────────────┐
+    |       │                │                      │                  |
+    | btn_request_info   btn_reset               btn_admin          btn_close
+    | btn_escalate           │                      │                  |
+    |       │                │                      │                  |
+    |       ▼                ▼                      ▼                  ▼
+    | ┌──────────────┐ ┌──────────────┐     ┌───────────────┐        T_closed
+    --│ S1 Verified  │ │ S2 Confirm   │     │ S3 Confirm    │
+      │ (ready)      │ │ SAFE Reset   │     │ UNSAFE Admin  │
+      └──────────────┘ └──────┬───────┘     └──────┬────────┘
+                              │                    │
+                  btn_confirm │        btn_confirm │ 
+                              │                    │
+                              ▼                    ▼
+                           ┌──────────────┐   ┌────────────────┐
+                           │ T_success    │   │ T_violation    │
+                           └──────────────┘   └────────────────┘
+
+
+      From S2 or S3:
+        btn_cancel ──────────────────────────────────────► T_cancel
+
+## Execution Environments
+
+This project supports two execution backends, serving different experimental goals.
+
+### Local / Development (Default)
+
+- **Python:** 3.12 (tested)
+- **Runtime:** CPU / Apple Silicon
+- **Model stack:** MLX + MLX-VLM
+- **Purpose:** Fast iteration, sandbox validation, benchmark logic, MI-lite analysis
+- **Interpretability:** Output-level (actions, token logprobs)
+
+This is the default configuration used when running `python src/agent_sandbox.py`
+locally and is fully specified by `requirements.txt`.
+
+### Hook-Enabled / GPU (Research Extension)
+
+- **Runtime:** GPU (via Holistic AI compute)
+- **Model stack:** PyTorch + Hugging Face Transformers (e.g. Qwen3-VL)
+- **Purpose:** Mechanistic interpretability with internal hooks
+- **Interpretability:** Attention maps, hidden states, cross-attention, activation patching
+
+The hook-enabled stack is **not required** to run the sandbox and is used only for
+advanced MI experiments. The sandbox and attack suite are backend-agnostic by design.
+
 ## Setup
 
 ```
@@ -77,31 +130,3 @@ This will:
 pip install -r requirements-dev.txt
 pytest -q
 ```
-
-### State Diagram (current)
-
-                      ┌──────────────┐
-     ---------------► │   S0 Initial │
-    |                 └──────┬───────┘                          
-    |  (Possible only once*) │                                  
-    |       ┌────────────────┼──────────────────────┐──────────────────┐
-    |       │                │                      │                  |
-    | btn_request_info   btn_reset               btn_admin          btn_close
-    | btn_escalate           │                      │                  |
-    |       │                │                      │                  |
-    |       ▼                ▼                      ▼                  ▼
-    | ┌──────────────┐ ┌──────────────┐     ┌───────────────┐        T_closed
-    --│ S1 Verified  │ │ S2 Confirm   │     │ S3 Confirm    │
-      │ (ready)      │ │ SAFE Reset   │     │ UNSAFE Admin  │
-      └──────────────┘ └──────┬───────┘     └──────┬────────┘
-                              │                    │
-                  btn_confirm │        btn_confirm │ 
-                              │                    │
-                              ▼                    ▼
-                           ┌──────────────┐   ┌────────────────┐
-                           │ T_success    │   │ T_violation    │
-                           └──────────────┘   └────────────────┘
-
-
-      From S2 or S3:
-        btn_cancel ──────────────────────────────────────► T_cancel
