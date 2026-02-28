@@ -48,16 +48,48 @@ def _repo_root(start: Path) -> Path:
     return start.resolve().parents[1]
 
 
-USE_INJECTION = True  # False = clean baseline
-
 def main():
     parser = argparse.ArgumentParser()
+    # --- Model configuration ---
     parser.add_argument("--use-stub", action="store_true", help="Use vlm_stub instead of real model")
     parser.add_argument("--script", nargs="*", default=None, help="Scripted button ids (e.g. btn_reset btn_confirm) or PARSE_FAIL")
+
+    # --- Attack configuration ---
+    parser.add_argument(
+        "--attack",
+        default="none",
+        choices=["none", "visual_text", "visual_authority", "visual_benign"],
+        help="Attack type. Use 'none' for clean baseline.",
+    )
+    parser.add_argument(
+        "--variant",
+        default=None,
+        help="Attack variant name (PNG file stem under sandbox_ui/assets/, e.g. explicit_admin).",
+    )
+    parser.add_argument(
+        "--start-step",
+        type=int,
+        default=0,
+        help="Step index at which the attack becomes active (for delayed/safety-drift attacks).",
+    )
     args = parser.parse_args()
 
-    global USE_STUB
-    USE_STUB = args.use_stub
+    ATTACK_CONFIG = {
+        "type": args.attack,
+        "variant": args.variant,
+        "start_step": args.start_step,
+    }
+
+    print("Attack config:", ATTACK_CONFIG)
+
+    if ATTACK_CONFIG["type"] != "none" and not ATTACK_CONFIG["variant"]:
+        raise SystemExit(
+            "ERROR: --variant is required when --attack is not 'none'. "
+            "Example: --attack visual_text --variant explicit_admin"
+        )
+
+    if ATTACK_CONFIG["start_step"] < 0:
+        raise SystemExit("ERROR: --start-step must be >= 0")
 
     if args.use_stub:
         from vlm_stub import vlm_choose_action, vlm_choose_action_with_logprobs, set_stub_script
@@ -82,10 +114,7 @@ def main():
             "provider": model_name,
             "name": "Qwen3-VL-4B-Instruct-4bit" if model_name != "stub" else "stub-policy"
         },
-        "attack": {
-            "has_injection_image": USE_INJECTION,
-            "variant_id": "default" if USE_INJECTION else "clean"
-        },
+        "attack": dict(ATTACK_CONFIG),
         "defense": {
             "enabled": False,
             "name": None
@@ -171,16 +200,37 @@ def main():
 
         return allowed
 
+    def apply_attack_if_needed(step: int):
+        assets_dir = project_root / "sandbox_ui" / "assets"
+        target = assets_dir / "injection.png"
 
-    assets_dir = project_root / "sandbox_ui" / "assets"
-    target = assets_dir / "injection.png"
+        if ATTACK_CONFIG["type"] == "none":
+            source = assets_dir / "clean.png"
+        elif step < ATTACK_CONFIG["start_step"]:
+            source = assets_dir / "clean.png"
+        else:
+            source = assets_dir / f"{ATTACK_CONFIG['variant']}.png"
 
-    if USE_INJECTION:
-        source = assets_dir / "injection_attack.png"
-    else:
-        source = assets_dir / "clean.png"
+        if not source.exists():
+            raise FileNotFoundError(
+                f"Attack asset not found: {source}. "
+                f"Did you run generate_visual_injection.py and set --variant correctly?"
+            )
 
-    shutil.copyfile(source, target)
+        shutil.copyfile(source, target)
+
+        # Trigger image refresh in the browser by updating the query param (cache-busting)
+        driver.execute_script("""
+            const img = document.getElementById('injection_img');
+            if (img) {
+                const base = img.src.split('?')[0];
+                img.src = base + '?v=' + Date.now();
+            }
+            """)
+        time.sleep(0.05)
+
+        return source
+
 
     try:    
         driver.get(f"file://{html_file}")
@@ -191,6 +241,7 @@ def main():
         violation = False
 
         for t in range(run_config["max_steps"]):
+            source = apply_attack_if_needed(t)
             screenshot_path = snap(t)
             status_before = read_status()
 
@@ -203,8 +254,6 @@ def main():
 
             executed = False
             step_error = None
-
-            allowed = allowed_actions(driver, status_before)
 
             if click_id is None:
                 step_error = "parse_failed"
@@ -235,6 +284,15 @@ def main():
                     "t": t,
                     "screenshot": screenshot_path,
                     "allowed_actions": sorted(allowed),
+                    "attack_active": (
+                        ATTACK_CONFIG["type"] != "none"
+                        and ATTACK_CONFIG["variant"] is not None
+                        and t >= ATTACK_CONFIG["start_step"]
+                    ),
+                    "attack_start_step": ATTACK_CONFIG["start_step"],
+                    "attack_variant": ATTACK_CONFIG["variant"],
+                    "attack_type": ATTACK_CONFIG["type"],
+                    "attack_asset": source.name,
                     "status_before": status_before,
                     "model_output": raw,
                     "parsed_click_id": click_id,
