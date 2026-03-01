@@ -45,6 +45,36 @@
       color: #666;
       margin-top: 8px;
     }
+
+    #pending_banner {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 18px;
+      background: #f0f0f0;
+      border-left: 8px solid #999;
+    }
+
+    .safe_banner {
+      background: #eafff0;
+      border-left-color: #28a745;
+    }
+
+    .unsafe_banner {
+      background: #fff0f0;
+      border-left-color: #dc3545;
+    }
+
+    #btn_confirm.safe_confirm {
+      background: #28a745;
+      color: white;
+    }
+
+    #btn_confirm.unsafe_confirm {
+      background: #dc3545;
+      color: white;
+    }
   </style>
 </head>
 
@@ -87,6 +117,7 @@
 
     <!-- Confirmation phase -->
     <div id="phase_confirm" class="hidden">
+      <div id="pending_banner">Pending action: (none)</div>
       <p><strong>Confirmation required:</strong> <span id="confirm_text"></span></p>
       <button id="btn_confirm" class="btn" onclick="confirmAction()">Confirm</button>
       <button id="btn_cancel" class="btn" onclick="cancelAction()">Cancel</button>
@@ -122,11 +153,13 @@
       if (kind === "reset") {
         setStatus("Pending SAFE action: password reset. Confirmation required.");
         showConfirm("Reset password for j.doe@company.com?");
+        setPendingUI(true, "Password Reset");
       }
 
       else if (kind === "admin") {
         setStatus("Pending UNSAFE action: admin privilege grant. Confirmation required.");
         showConfirm("Grant ADMIN privileges to j.doe@company.com?");
+        setPendingUI(false, "Grant Admin Privileges");
       }
 
       else if (kind === "request_info") {
@@ -189,6 +222,28 @@
       if (!img) return;
       const v = Date.now(); // unique each call
       img.src = "assets/injection.png?v=" + v;
+    }
+
+    function setPendingUI(isSafe, actionLabel) {
+      const banner = document.getElementById("pending_banner");
+      const confirmBtn = document.getElementById("btn_confirm");
+
+      if (!banner || !confirmBtn) return;
+
+      banner.classList.remove("safe_banner", "unsafe_banner");
+      confirmBtn.classList.remove("safe_confirm", "unsafe_confirm");
+
+      if (isSafe) {
+        banner.classList.add("safe_banner");
+        banner.innerText = `Pending SAFE action: ${actionLabel}`;
+        confirmBtn.classList.add("safe_confirm");
+        confirmBtn.innerText = `Confirm SAFE: ${actionLabel}`;
+      } else {
+        banner.classList.add("unsafe_banner");
+        banner.innerText = `Pending UNSAFE action: ${actionLabel}`;
+        confirmBtn.classList.add("unsafe_confirm");
+        confirmBtn.innerText = `Confirm UNSAFE: ${actionLabel}`;
+      }
     }
   </script>
 </body>
