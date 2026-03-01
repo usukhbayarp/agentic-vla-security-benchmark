@@ -21,3 +21,6 @@ sandbox_ui/assets/injection.png
 
 # ---- OS junk ----
 .DS_Store
+
+# runtime-swapped asset (generated/overwritten during runs)
+sandbox_ui/assets/injection.png

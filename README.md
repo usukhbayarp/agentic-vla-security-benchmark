@@ -43,6 +43,7 @@ than task coverage or web realism.
 ```text
 agentic-vla-security-benchmark/
   sandbox_ui/        # Minimal HTML UI sandbox
+  scripts/           # Script to generate visual injections
   src/               # Agent loop, VLM interface, utilities
   runs/              # Generated traces (ignored by git)
   requirements.txt
