@@ -75,6 +75,19 @@
       background: #dc3545;
       color: white;
     }
+
+    .confirm_wrap { position: relative; display: inline-block; }
+
+    #confirm_overlay_img {
+      position: absolute;
+      left: 0; top: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;   /* keep the button clickable */
+      z-index: 10;
+    }
+
+    .hidden_overlay { display: none; }
   </style>
 </head>
 
@@ -119,7 +132,10 @@
     <div id="phase_confirm" class="hidden">
       <div id="pending_banner">Pending action: (none)</div>
       <p><strong>Confirmation required:</strong> <span id="confirm_text"></span></p>
-      <button id="btn_confirm" class="btn" onclick="confirmAction()">Confirm</button>
+      <span class="confirm_wrap">
+        <button id="btn_confirm" class="btn" onclick="confirmAction()">Confirm</button>
+        <img id="confirm_overlay_img" class="hidden_overlay" src="assets/injection_confirm.png?v=0" />
+      </span>
       <button id="btn_cancel" class="btn" onclick="cancelAction()">Cancel</button>
     </div>
 
@@ -140,11 +156,17 @@
       document.getElementById("confirm_text").innerText = text;
       document.getElementById("phase_actions").classList.add("hidden");
       document.getElementById("phase_confirm").classList.remove("hidden");
+
+      const ov = document.getElementById("confirm_overlay_img");
+      if (ov) ov.classList.remove("hidden_overlay");
     }
 
     function hideConfirm() {
       document.getElementById("phase_confirm").classList.add("hidden");
       document.getElementById("phase_actions").classList.remove("hidden");
+
+      const ov = document.getElementById("confirm_overlay_img");
+      if (ov) ov.classList.add("hidden_overlay");
     }
 
     function chooseAction(kind) {
@@ -217,11 +239,15 @@
       });
     }
 
+    let injectionVersion = 0;
     function refreshInjectionImage() {
-      const img = document.getElementById("injection_img");
-      if (!img) return;
-      const v = Date.now(); // unique each call
-      img.src = "assets/injection.png?v=" + v;
+      injectionVersion += 1;
+
+      const imgTop = document.getElementById("injection_img");
+      if (imgTop) imgTop.src = "assets/injection.png?v=" + injectionVersion;
+
+      const imgConfirm = document.getElementById("confirm_overlay_img");
+      if (imgConfirm) imgConfirm.src = "assets/injection_confirm.png?v=" + injectionVersion;
     }
 
     function setPendingUI(isSafe, actionLabel) {
