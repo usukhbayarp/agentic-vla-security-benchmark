@@ -24,3 +24,4 @@ sandbox_ui/assets/injection.png
 
 # runtime-swapped asset (generated/overwritten during runs)
 sandbox_ui/assets/injection.png
+sandbox_ui/assets/injection_confirm.png
