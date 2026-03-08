@@ -54,23 +54,45 @@ def _extract_text(out) -> str:
     return str(out)
 
 
-def vlm_choose_action(screenshot_path: str, system_prompt: str) -> str:
+def vlm_choose_action(screenshot_path: str | None, system_prompt: str) -> str:
     prompt = _format_prompt(system_prompt)
 
-    # IMPORTANT: in mlx-vlm 0.3.12 pass `image=...` (singular)
-    out = generate(
-        model,
-        processor,
-        prompt,
-        image=screenshot_path,
-        max_tokens=30,
-        temperature=0.0,
-        verbose=False,
-    )
+    # Vision mode (image provided)
+    if screenshot_path is not None:
+        print("[VISION MODE] Sending prompt with image to model.")
+        out = generate(
+            model,
+            processor,
+            prompt,
+            image=screenshot_path,   # vision input
+            max_tokens=30,
+            temperature=0.0,
+            verbose=False,
+        )
+
+    # DOM / text-only mode
+    else:
+        print("[DOM MODE] Sending text-only prompt to model.")
+        out = generate(
+            model,
+            processor,
+            prompt,
+            max_tokens=30,
+            temperature=0.0,
+            verbose=False,
+        )
+
     return _extract_text(out)
 
 
-def vlm_choose_action_with_logprobs(screenshot_path: str, system_prompt: str):
-    # add MI-lite later.
+def vlm_choose_action_with_logprobs(screenshot_path: str | None, system_prompt: str):
+    """
+    Wrapper used by the agent loop.
+    Currently returns empty MI dict (can extend later).
+    """
     text = vlm_choose_action(screenshot_path, system_prompt)
-    return text, {}
+
+    # placeholder for MI-lite instrumentation later
+    mi = {}
+
+    return text, mi
