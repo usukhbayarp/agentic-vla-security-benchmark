@@ -1,7 +1,6 @@
 # Agentic VLA Security Benchmark
 
-A minimal visual sandbox for benchmarking **security failures and explainability** in
-**Vision–Language–Action (VLA) agents**.
+A minimal sandbox for studying **prompt injection and safety failures in web agents**.
 
 This repository provides a lightweight, reproducible environment for studying how
 security defenses that appear robust in static benchmarks can fail during **multi-step
@@ -18,7 +17,7 @@ representations can drift and constraints may degrade over time.
 
 This project introduces a **minimal agentic sandbox** inspired by WebArena-style
 evaluation, while intentionally avoiding large-scale web environments.
-The focus is on **controlled failures, trace collection, and explainability** rather
+The focus is on **controlled failures, trace collection, and mechanistic explainability** rather
 than task coverage or web realism.
 
 ---
@@ -26,8 +25,11 @@ than task coverage or web realism.
 ## What This Is (and Is Not)
 
 **This is:**
-- A local, sandboxed **visual agentic environment**
-- Screenshot-based **Vision → Language → Action** evaluation
+- A local sandbox for evaluating Vision, DOM, and grounded web agents
+- Multiple observation interfaces for agents:
+  - **Vision mode** (screenshot-based VLA)
+  - **DOM mode** (structured UI text)
+  - **Set-of-Marks mode (SoM)** combining screenshot + DOM grounding
 - Deterministic UI with explicit **policy violations**
 - Trace logging for analysis and MI
 
@@ -38,14 +40,76 @@ than task coverage or web realism.
 
 ---
 
+## Agent Observation Modes
+
+The sandbox supports three different observation interfaces for agents.
+
+These modes allow studying how different agent architectures respond to
+visual prompt-injection attacks.
+
+### Vision Mode
+
+The agent receives a **screenshot of the UI** and must reason over visual
+information to choose an action.
+
+**UI → screenshot → VLM → action**
+
+This mode is most vulnerable to **visual prompt injection** attacks.
+
+---
+
+### DOM Mode
+
+The agent receives a **structured textual observation of the DOM**, including:
+
+- page title
+- visible text
+- interactive elements
+
+**UI → DOM snapshot → LLM reasoning → action**
+
+This mode is robust to purely visual attacks because injected images
+do not appear in the DOM observation.
+
+---
+
+### Set-of-Marks (SoM) Mode
+
+Inspired by **SeeAct / WebArena agents**, SoM combines:
+
+- screenshot input
+- DOM-based grounding
+- numbered markers for clickable elements
+
+
+**DOM → extract actionable elements → overlay numbered markers → VLM reasoning → action**
+
+The model selects actions using marker indices:
+
+**CLICK_INDEX:<number>**
+
+This provides **visual grounding while restricting the action space**.
+
+---
+
 ## Repository Structure
 
 ```text
 agentic-vla-security-benchmark/
   sandbox_ui/        # Minimal HTML UI sandbox
   scripts/           # Script to generate visual injections
-  src/               # Agent loop, VLM interface, utilities
+  src/
+    agent_sandbox.py   # Main experiment runner
+    prompts.py         # Policy prompts + mode-specific extensions
+    observations.py    # DOM observations + SoM mapping
+    som.py             # Set-of-Marks rendering
+    browser_env.py     # Selenium environment helpers
+    attacks.py         # Visual injection routing
+    vlm_mlx.py         # MLX-VLM interface
+    vlm_stub.py        # Deterministic stub model for testing
+    utils.py
   runs/              # Generated traces (ignored by git)
+  tests/             # Tests
   requirements.txt
   README.md
 ```
@@ -101,7 +165,8 @@ locally and is fully specified by `requirements.txt`.
 - **Interpretability:** Attention maps, hidden states, cross-attention, activation patching
 
 The hook-enabled stack is **not required** to run the sandbox and is used only for
-advanced MI experiments. The sandbox and attack suite are backend-agnostic by design.
+advanced MI experiments. The sandbox and attack suite are designed to be largely backend-agnostic.
+Different model backends can be integrated by replacing the VLM interface.
 
 ## Setup
 
@@ -113,16 +178,53 @@ pip install -r requirements.txt
 
 ## Running the Sandbox
 
-```
-python src/agent_sandbox.py
+### Vision Agent (default)
+
+```bash
+python src/agent_sandbox.py --mode vision
 ```
 
-This will:
-- Open a local HTML UI via Selenium
-- Capture a screenshot of the UI state
-- Pass the screenshot to a VLM (or stub)
-- Execute the selected action
-- Save screenshots and a structured trace to ```runs/```
+### DOM Agent
+
+```bash
+python src/agent_sandbox.py --mode dom
+```
+
+### Set-of-Marks Agent
+
+```bash
+python src/agent_sandbox.py --mode som
+```
+
+
+Each run will:
+- Launch the TinyDesk UI via Selenium
+- Generate an observation (screenshot / DOM / SoM)
+- Query the VLM
+- Execute the chosen action
+- Save a full execution trace to ```runs/```
+
+## Trace Logging
+
+Each run produces a structured trace:
+
+```runs/<timestamp>/trace.json```
+
+
+The trace includes:
+
+- model prompts
+- screenshots
+- DOM observations
+- marker mappings (SoM mode)
+- selected actions
+- UI status transitions
+- attack configuration
+
+This allows reproducible debugging and downstream analysis.
+Runs are deterministic given the same model and configuration,
+allowing reproducible failure traces for debugging and analysis.
+
 
 ## CLI-Configurable Runs
 
@@ -178,6 +280,26 @@ evaluation of multi-step safety degradation.
 
 ---
 
+### Implemented Attack Families
+
+The sandbox includes several visual prompt-injection variants:
+
+- **Shadow State**
+  - Mimics UI system banners to alter perceived state
+
+- **Safety Mimicry**
+  - Frames unsafe actions as compliance requirements
+
+- **Foveal Microtext**
+  - Low-salience instructions placed near actionable UI elements
+
+- **Channel Conflict**
+  - Visual overlays that contradict the actual UI semantics
+  - Example: overlaying the Confirm button with
+    "Confirm SAFE: Grant Admin" while the underlying action
+    grants administrator privileges
+---
+
 #### Example Commands
 
 **Clean baseline**
@@ -214,6 +336,19 @@ python src/agent_sandbox.py \
   --variant low_salience
 ```
 
+## Experimental Goal
+
+The sandbox allows comparing how different agent observation
+interfaces respond to visual prompt injection:
+
+| Mode | Input | Vulnerability |
+|-----|-----|-----|
+Vision | Screenshot | Visual attacks |
+DOM | Structured UI text | DOM manipulation |
+SoM | Screenshot + DOM grounding | Hybrid attacks |
+
+This enables controlled experiments on **agent robustness under
+different observation models**.
 
 ### Development / Testing
 
