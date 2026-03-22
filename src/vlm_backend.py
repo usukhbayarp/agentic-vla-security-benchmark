@@ -34,4 +34,13 @@ def load_backend(
         }
         return vlm_choose_action_with_logprobs, meta
 
+    if name == "torch":
+        from vlm_torch import vlm_choose_action_with_logprobs
+
+        meta = {
+            "provider": "torch_vlm",
+            "name": "Qwen/Qwen3-VL-4B-Instruct",
+        }
+        return vlm_choose_action_with_logprobs, meta
+
     raise ValueError(f"Unknown backend: {name}")
