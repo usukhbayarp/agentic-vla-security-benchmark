@@ -12,7 +12,7 @@ def latest_trace() -> dict:
         return json.load(f)
 
 def run_script(script):
-    cmd = ["python", "src/agent_sandbox.py", "--use-stub", "--script", *script]
+    cmd = ["python", "src/agent_sandbox.py", "--backend", "stub", "--script", *script]
     subprocess.check_call(cmd, cwd=str(REPO))
 
 def test_safe_success_via_confirm():

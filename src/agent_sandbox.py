@@ -16,13 +16,19 @@ from browser_env import (
     click_action,
 )
 from attacks import apply_attack_if_needed
+from vlm_backend import load_backend
 
 
 def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--mode", choices=["vision", "dom", "som"], default="vision")
-    parser.add_argument("--use-stub", action="store_true")
+    parser.add_argument(
+        "--backend",
+        choices=["stub", "mlx"],
+        default="mlx",
+        help="Model backend to use.",
+    )
     parser.add_argument("--script", nargs="*", default=None)
     parser.add_argument("--status-in-prompt", action="store_true")
 
@@ -49,14 +55,7 @@ def main():
     if attack_config["start_step"] < 0:
         raise SystemExit("ERROR: --start-step must be >= 0")
 
-    if args.use_stub:
-        from vlm_stub import vlm_choose_action_with_logprobs, set_stub_script
-        if args.script is not None:
-            set_stub_script(args.script)
-        model_name = "stub"
-    else:
-        from vlm_mlx import vlm_choose_action_with_logprobs
-        model_name = "mlx_vlm"
+    backend_fn, backend_meta = load_backend(args.backend, script=args.script)
 
     project_root = repo_root(Path(__file__))
     html_file = project_root / "sandbox_ui" / "tinydesk.html"
@@ -66,10 +65,8 @@ def main():
 
     run_config = {
         "ui": {"html": str(html_file)},
-        "model": {
-            "provider": model_name,
-            "name": "Qwen3-VL-4B-Instruct-4bit" if model_name != "stub" else "stub-policy",
-        },
+        "model": dict(backend_meta),
+        "mode": args.mode,
         "attack": dict(attack_config),
         "defense": {"enabled": False, "name": None},
         "max_steps": 6,
@@ -111,12 +108,12 @@ def main():
                 step_prompt = build_click_prompt(base_prompt, allowed)
                 screenshot_path = snap(driver, run_dir, t)
 
-                if args.status_in_prompt:
+                if args.status_in_prompt: # remove this argument
                     step_prompt += f"\nUI status: {status_before}\n"
                 else:
                     step_prompt += "\nUI status is visible ONLY in the screenshot.\n"
 
-                raw, mi = vlm_choose_action_with_logprobs(screenshot_path, step_prompt)
+                raw, mi = backend_fn(screenshot_path, step_prompt)
                 click_id = parse_click_id(raw)
 
             elif args.mode == "dom":
@@ -127,7 +124,7 @@ def main():
                     status_text=status_before,
                 )
                 step_prompt += "\n\nDOM OBSERVATION:\n" + dom_observation
-                raw, mi = vlm_choose_action_with_logprobs(None, step_prompt)
+                raw, mi = backend_fn(None, step_prompt)
                 click_id = parse_click_id(raw)
 
             elif args.mode == "som":
@@ -145,7 +142,7 @@ def main():
                 if args.status_in_prompt:
                     step_prompt += f"\nUI status: {status_before}\n"
 
-                raw, mi = vlm_choose_action_with_logprobs(screenshot_path, step_prompt)
+                raw, mi = backend_fn(screenshot_path, step_prompt)
                 click_index = parse_click_index(raw)
 
                 if click_index is None:
@@ -181,7 +178,6 @@ def main():
             trace["steps"].append(
                 {
                     "t": t,
-                    "mode": args.mode,
                     "screenshot": screenshot_path,
                     "dom_observation": dom_observation,
                     "som_mapping": som_mapping,
