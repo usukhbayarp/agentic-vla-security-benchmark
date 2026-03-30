@@ -356,3 +356,62 @@ different observation models**.
 pip install -r requirements-dev.txt
 pytest -q
 ```
+
+## Docker (Phase 3A: local CPU/headless harness)
+
+A first Docker split is implemented for reproducible, local containerized runs of the benchmark harness using the **stub backend**.
+
+### What this supports
+- Headless browser execution inside Docker
+- TinyDesk environment loading via local `file://` path
+- All three observation modes:
+  - `vision`
+  - `dom`
+  - `som`
+- Persistent output traces and screenshots via mounted `runs/`
+
+### What this does not include yet
+- GPU support
+- PyTorch / CUDA inference inside Docker
+- MLX inside Docker
+
+This phase is intended to validate:
+- containerized Selenium/browser execution
+- repo-relative path handling
+- benchmark trace generation
+- DOM / Vision / SoM compatibility in a reproducible environment
+
+### Build
+
+```bash
+docker build -t obssec .
+```
+
+### Run
+
+Default run (stub + DOM):
+
+```bash
+docker run --rm -v "$(pwd)/runs:/app/runs" obssec
+```
+
+Vision mode:
+
+```bash
+docker run --rm -v "$(pwd)/runs:/app/runs" obssec \
+  python src/agent_sandbox.py --backend stub --mode vision
+```
+
+SoM mode:
+
+```bash
+docker run --rm -v "$(pwd)/runs:/app/runs" obssec \
+  python src/agent_sandbox.py --backend stub --mode som --script 5 2
+```
+
+DOM mode with scripted safe path:
+
+```bash
+docker run --rm -v "$(pwd)/runs:/app/runs" obssec \
+  python src/agent_sandbox.py --backend stub --mode dom --script btn_reset btn_confirm
+```

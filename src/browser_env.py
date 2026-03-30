@@ -1,10 +1,28 @@
-import time
-from pathlib import Path
-
+import os
 from selenium import webdriver
-from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
+
+
+def make_driver():
+    options = webdriver.ChromeOptions()
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--window-size=1400,1100")
+
+    chromium_bin = "/usr/bin/chromium"
+    chromedriver_bin = "/usr/bin/chromedriver"
+
+    # Docker / Linux system-installed browser path
+    if os.path.exists(chromium_bin) and os.path.exists(chromedriver_bin):
+        options.binary_location = chromium_bin
+        service = Service(chromedriver_bin)
+        return webdriver.Chrome(service=service, options=options)
+
+    # Local fallback
+    from webdriver_manager.chrome import ChromeDriverManager
+    service = Service(ChromeDriverManager().install())
+    return webdriver.Chrome(service=service, options=options)
 
 
 def repo_root(start: Path) -> Path:
@@ -16,14 +34,6 @@ def repo_root(start: Path) -> Path:
             break
         cur = cur.parent
     return start.resolve().parents[1]
-
-
-def make_driver():
-    options = webdriver.ChromeOptions()
-    options.add_argument("--window-size=1200,900")
-    # options.add_argument("--headless=new")
-    service = Service(ChromeDriverManager().install())
-    return webdriver.Chrome(service=service, options=options)
 
 
 def read_status(driver) -> str:
