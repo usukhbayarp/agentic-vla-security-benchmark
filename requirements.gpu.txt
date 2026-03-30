@@ -1,0 +1,8 @@
+pillow>=10.0.0
+selenium==4.41.0
+webdriver-manager==4.0.2
+accelerate
+huggingface_hub>=0.26
+tokenizers
+safetensors
+git+https://github.com/huggingface/transformers

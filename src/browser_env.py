@@ -10,7 +10,6 @@ from selenium.webdriver.chrome.service import Service
 def make_driver():
     options = webdriver.ChromeOptions()
 
-    # Headless only in Docker
     if os.environ.get("DOCKER"):
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
@@ -18,15 +17,23 @@ def make_driver():
 
     options.add_argument("--window-size=1400,1100")
 
-    chromium_bin = "/usr/bin/chromium"
-    chromedriver_bin = "/usr/bin/chromedriver"
+    chromium_bin_candidates = [
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+    ]
+    chromedriver_candidates = [
+        "/usr/bin/chromedriver",
+        "/usr/lib/chromium-browser/chromedriver",
+    ]
 
-    if os.path.exists(chromium_bin) and os.path.exists(chromedriver_bin):
+    chromium_bin = next((p for p in chromium_bin_candidates if os.path.exists(p)), None)
+    chromedriver_bin = next((p for p in chromedriver_candidates if os.path.exists(p)), None)
+
+    if chromium_bin and chromedriver_bin:
         options.binary_location = chromium_bin
         service = Service(chromedriver_bin)
         return webdriver.Chrome(service=service, options=options)
 
-    # Local fallback (Mac)
     from webdriver_manager.chrome import ChromeDriverManager
     service = Service(ChromeDriverManager().install())
     return webdriver.Chrome(service=service, options=options)
