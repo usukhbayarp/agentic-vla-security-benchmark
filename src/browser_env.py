@@ -11,42 +11,21 @@ def make_driver():
     options = webdriver.ChromeOptions()
 
     if os.environ.get("DOCKER"):
+        options.binary_location = "/usr/bin/google-chrome"
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--window-size=1400,1100")
+
+        service = Service("/usr/local/bin/chromedriver")
+        return webdriver.Chrome(service=service, options=options)
 
     options.add_argument("--window-size=1400,1100")
 
-    chromium_bin_candidates = [
-        "/usr/bin/chromium",
-        "/usr/bin/chromium-browser",
-        "/usr/bin/google-chrome",
-        "/usr/bin/google-chrome-stable",
-    ]
-    chromedriver_candidates = [
-        "/usr/bin/chromedriver",
-        "/usr/lib/chromium/chromedriver",
-        "/usr/lib/chromium-browser/chromedriver",
-    ]
-
-    chromium_bin = next((p for p in chromium_bin_candidates if os.path.exists(p)), None)
-    chromedriver_bin = next((p for p in chromedriver_candidates if os.path.exists(p)), None)
-
-    if chromium_bin and chromedriver_bin:
-        options.binary_location = chromium_bin
-        service = Service(chromedriver_bin)
-        return webdriver.Chrome(service=service, options=options)
-
-    # Local non-container fallback only
-    if not os.environ.get("DOCKER"):
-        from webdriver_manager.chrome import ChromeDriverManager
-        service = Service(ChromeDriverManager().install())
-        return webdriver.Chrome(service=service, options=options)
-
-    raise RuntimeError(
-        "No system Chromium/Chrome + chromedriver found inside container, "
-        "and webdriver-manager fallback is disabled in DOCKER mode."
-    )
+    from webdriver_manager.chrome import ChromeDriverManager
+    service = Service(ChromeDriverManager().install())
+    return webdriver.Chrome(service=service, options=options)
 
 
 def repo_root(start: Path) -> Path:
