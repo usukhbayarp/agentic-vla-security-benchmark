@@ -415,3 +415,88 @@ DOM mode with scripted safe path:
 docker run --rm -v "$(pwd)/runs:/app/runs" obssec \
   python src/agent_sandbox.py --backend stub --mode dom --script btn_reset btn_confirm
 ```
+
+
+## Docker (Phase 3B: GPU + Remote Browser Execution)
+
+### Overview
+
+Phase 3B introduces a fully containerized, GPU-accelerated execution pipeline with a decoupled browser environment.
+
+This phase enables:
+
+- Running Vision-Language-Action (VLA) agents on remote GPU (CUDA)
+- Executing browser interactions via remote Selenium (ARM-compatible)
+- Maintaining reproducibility and portability via Docker Compose
+- Supporting both Torch (GPU) and Stub (sanity) backends
+
+### Two-container design:
+1. agent (GPU container)
+- Runs your benchmark logic
+- Loads VLM (Qwen3-VL-4B)
+- Executes agent loop
+- Produces traces (runs/)
+
+2. browser (Selenium container)
+- Runs Chromium via Selenium Grid
+- Receives commands from agent
+- Handles UI rendering + interaction
+
+The browser is executed in a separate container and accessed via Remote WebDriver
+(Selenium Grid), allowing architecture-independent execution (ARM GPU servers)
+while keeping the agent container lightweight.
+
+Key Design Decisions:
+- ❌ No Chrome inside GPU container (avoids ARM/x86 issues)
+- ✅ Remote WebDriver via SELENIUM_REMOTE_URL
+- ✅ HuggingFace cache mounted → avoids repeated downloads
+- ✅ Backend abstraction (--backend torch | stub)
+
+### Start services
+
+Build and bring up the browser container (required before running experiments):
+
+```bash
+docker compose -f docker-compose.gpu.yml up --build -d browser
+```
+
+### Run Experiments
+
+`--use-aliases` is required so the `browser` service hostname resolves when using `docker compose run`.
+
+Torch (GPU) — main experiment:
+
+```bash
+docker compose -f docker-compose.gpu.yml run --rm --use-aliases agent \
+  python3 src/agent_sandbox.py --backend torch --mode dom
+```
+
+Stub (sanity check):
+
+```bash
+docker compose -f docker-compose.gpu.yml run --rm --use-aliases agent \
+  python3 src/agent_sandbox.py --backend stub --mode dom
+```
+
+A successful run saves a new directory under `runs/` containing `trace.json`
+and should show `executed_any: true` in the final trace summary.
+
+### Shutdown
+
+```bash
+docker compose -f docker-compose.gpu.yml down
+```
+
+## Failure Modes Observed
+
+- **Format violations** — invalid action outputs (e.g., unparseable CLICK strings)
+- **Conservative bias** — repeated CANCEL regardless of ticket context
+- **Multi-step drift** — failure to complete confirmation across sequential steps
+
+These are logged explicitly in `trace.json` for each run.
+
+## Reproducibility
+
+All experiments are reproducible via Docker Compose with fixed model, UI, and attack
+configurations. The environment isolates browser and model execution to ensure
+deterministic trace collection.

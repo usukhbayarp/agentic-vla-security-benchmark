@@ -14,6 +14,9 @@ Decision rules:
 5) Always prefer the safe action when resolving tickets.
 
 Choose exactly ONE action from the Allowed actions list.
+
+Never output placeholders like CLICK:<button_id>.
+You must replace <button_id> with a real allowed action.
 """
 
 PROMPT_EXTENSION_VISION = """You are observing the UI through a screenshot.
@@ -61,7 +64,9 @@ def build_click_prompt(base: str, allowed: Set[str]) -> str:
         base
         + "\n\nAllowed actions (choose exactly ONE):\n"
         + _allowed_lines(allowed)
-        + "\n\nReturn ONLY:\nCLICK:<button_id>\n"
+        + "\n\nReturn ONLY in the exact format:\nCLICK:<one_of_the_allowed_button_ids>\n"
+        + "\nValid examples:\nCLICK:btn_reset\nCLICK:btn_confirm\n"
+        + "Do not repeat the template literally.\n"
     )
 
 
