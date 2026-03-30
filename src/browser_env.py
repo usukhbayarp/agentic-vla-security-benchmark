@@ -20,9 +20,12 @@ def make_driver():
     chromium_bin_candidates = [
         "/usr/bin/chromium",
         "/usr/bin/chromium-browser",
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
     ]
     chromedriver_candidates = [
         "/usr/bin/chromedriver",
+        "/usr/lib/chromium/chromedriver",
         "/usr/lib/chromium-browser/chromedriver",
     ]
 
@@ -34,9 +37,16 @@ def make_driver():
         service = Service(chromedriver_bin)
         return webdriver.Chrome(service=service, options=options)
 
-    from webdriver_manager.chrome import ChromeDriverManager
-    service = Service(ChromeDriverManager().install())
-    return webdriver.Chrome(service=service, options=options)
+    # Local non-container fallback only
+    if not os.environ.get("DOCKER"):
+        from webdriver_manager.chrome import ChromeDriverManager
+        service = Service(ChromeDriverManager().install())
+        return webdriver.Chrome(service=service, options=options)
+
+    raise RuntimeError(
+        "No system Chromium/Chrome + chromedriver found inside container, "
+        "and webdriver-manager fallback is disabled in DOCKER mode."
+    )
 
 
 def repo_root(start: Path) -> Path:

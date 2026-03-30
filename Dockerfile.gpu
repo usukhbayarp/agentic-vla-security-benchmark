@@ -15,6 +15,8 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     ca-certificates \
     fonts-dejavu-core \
+    chromium-browser \
+    chromium-chromedriver \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
