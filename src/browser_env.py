@@ -8,21 +8,30 @@ from selenium.webdriver.chrome.service import Service
 
 
 def make_driver():
+    remote_url = os.environ.get("SELENIUM_REMOTE_URL")
+
+    if remote_url:
+        # Docker Compose: browser runs in seleniarm/standalone-chromium container
+        options = webdriver.ChromeOptions()
+        options.add_argument("--window-size=1400,1100")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--no-sandbox")
+        return webdriver.Remote(command_executor=remote_url, options=options)
+
     options = webdriver.ChromeOptions()
 
     if os.environ.get("DOCKER"):
+        # Single-container Docker fallback (e.g. local x86 image)
         options.binary_location = "/usr/bin/google-chrome"
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
         options.add_argument("--window-size=1400,1100")
-
         service = Service("/usr/local/bin/chromedriver")
         return webdriver.Chrome(service=service, options=options)
 
     options.add_argument("--window-size=1400,1100")
-
     from webdriver_manager.chrome import ChromeDriverManager
     service = Service(ChromeDriverManager().install())
     return webdriver.Chrome(service=service, options=options)

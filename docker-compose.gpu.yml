@@ -1,0 +1,28 @@
+services:
+  browser:
+    image: seleniarm/standalone-chromium:4.27.0
+    shm_size: "2gb"
+    environment:
+      - SE_NODE_MAX_SESSIONS=2
+      - SE_SESSION_RETRY_INTERVAL=5
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    depends_on:
+      browser:
+        condition: service_healthy
+    gpus: all
+    environment:
+      - DOCKER=1
+      - SELENIUM_REMOTE_URL=http://browser:4444/wd/hub
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+      - ./runs:/app/runs
