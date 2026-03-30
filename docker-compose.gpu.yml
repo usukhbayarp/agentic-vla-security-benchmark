@@ -1,6 +1,6 @@
 services:
   browser:
-    image: seleniarm/standalone-chromium:4.27.0
+    image: selenium/standalone-chromium:145.0-20260222
     shm_size: "2gb"
     environment:
       - SE_NODE_MAX_SESSIONS=2
