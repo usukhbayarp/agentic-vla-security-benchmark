@@ -1,4 +1,8 @@
 import argparse
+import functools
+import http.server
+import os
+import threading
 import time
 from pathlib import Path
 
@@ -61,10 +65,26 @@ def main():
     html_file = project_root / "sandbox_ui" / "tinydesk.html"
     assert html_file.exists(), f"Missing HTML: {html_file}"
 
+    # When browser runs in a separate container it cannot access file:// paths
+    # from the agent container. Serve sandbox_ui/ over HTTP instead.
+    _srv = None
+    if os.environ.get("SELENIUM_REMOTE_URL"):
+        _serve_dir = project_root / "sandbox_ui"
+        _handler = functools.partial(
+            http.server.SimpleHTTPRequestHandler,
+            directory=str(_serve_dir),
+        )
+        _srv = http.server.ThreadingHTTPServer(("0.0.0.0", 8080), _handler)
+        threading.Thread(target=_srv.serve_forever, daemon=True).start()
+        html_url = "http://agent:8080/tinydesk.html"
+        time.sleep(0.3)  # let server bind before driver.get()
+    else:
+        html_url = f"file://{html_file}"
+
     run_dir = make_run_dir(project_root / "runs")
 
     run_config = {
-        "ui": {"html": str(html_file)},
+        "ui": {"html": str(html_file), "url": html_url},
         "model": dict(backend_meta),
         "mode": args.mode,
         "attack": dict(attack_config),
@@ -84,7 +104,7 @@ def main():
     }
 
     try:
-        driver.get(f"file://{html_file}")
+        driver.get(html_url)
         time.sleep(0.4)
 
         executed_any = False
@@ -108,7 +128,7 @@ def main():
                 step_prompt = build_click_prompt(base_prompt, allowed)
                 screenshot_path = snap(driver, run_dir, t)
 
-                if args.status_in_prompt: # remove this argument
+                if args.status_in_prompt:
                     step_prompt += f"\nUI status: {status_before}\n"
                 else:
                     step_prompt += "\nUI status is visible ONLY in the screenshot.\n"
@@ -216,6 +236,9 @@ def main():
 
     finally:
         driver.quit()
+        if _srv is not None:
+            _srv.shutdown()
+            _srv.server_close()
 
 
 if __name__ == "__main__":
