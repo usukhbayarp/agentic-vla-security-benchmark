@@ -10,6 +10,7 @@ import torch
 from transformers import AutoModelForImageTextToText, AutoProcessor
 
 MODEL_PATH = os.environ.get("QWEN_VL_MODEL", "Qwen/Qwen3-VL-4B-Instruct")
+MODEL_REVISION = os.environ.get("QWEN_VL_REVISION", "ebb281ec70b05090aa6165b016eac8ec08e71b17")
 
 print("Loading Torch VLM:", MODEL_PATH)
 print("torch version:", torch.__version__)
@@ -39,7 +40,10 @@ def _load_model_and_processor():
     """
     processor = AutoProcessor.from_pretrained(
         MODEL_PATH,
+        revision=MODEL_REVISION,
         trust_remote_code=True,
+        min_pixels=224 * 224,
+        max_pixels=512 * 512,
     )
 
     common_kwargs = dict(
@@ -55,6 +59,7 @@ def _load_model_and_processor():
         try:
             model = AutoModelForImageTextToText.from_pretrained(
                 MODEL_PATH,
+                revision=MODEL_REVISION,
                 attn_implementation="flash_attention_2",
                 **common_kwargs,
             )
@@ -65,6 +70,7 @@ def _load_model_and_processor():
     if model is None:
         model = AutoModelForImageTextToText.from_pretrained(
             MODEL_PATH,
+            revision=MODEL_REVISION,
             **common_kwargs,
         )
         print("Loaded model without flash_attention_2")
@@ -214,6 +220,7 @@ def vlm_choose_action_with_logprobs(
     mi = {
         "backend": "torch",
         "model_name": MODEL_PATH,
+        "model_revision": MODEL_REVISION,
         "device": str(model.device) if hasattr(model, "device") else _DEVICE,
         "input_tokens": input_len,
         "generated_tokens": int(out.sequences.shape[-1] - input_len),

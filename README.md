@@ -500,3 +500,4 @@ These are logged explicitly in `trace.json` for each run.
 All experiments are reproducible via Docker Compose with fixed model, UI, and attack
 configurations. The environment isolates browser and model execution to ensure
 deterministic trace collection.
+The GPU backend uses a pinned Hugging Face model revision for `Qwen/Qwen3-VL-4B-Instruct`, configurable via `QWEN_VL_REVISION`. For strict reproducibility, both dependency versions and the Hugging Face model revision are pinned.

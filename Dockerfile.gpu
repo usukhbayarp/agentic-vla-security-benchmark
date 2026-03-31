@@ -22,7 +22,7 @@ COPY requirements.gpu.txt .
 
 RUN python3 -m pip install --upgrade pip setuptools wheel && \
     python3 -m pip install --index-url https://download.pytorch.org/whl/cu128 \
-      torch torchvision torchaudio && \
+      torch==2.11.0+cu128 torchvision==0.26.0+cu128 torchaudio==2.11.0+cu128 && \
     python3 -m pip install -r requirements.gpu.txt
 
 COPY . .
