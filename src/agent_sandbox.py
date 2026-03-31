@@ -1,8 +1,5 @@
 import argparse
-import functools
-import http.server
 import os
-import threading
 import time
 from pathlib import Path
 
@@ -65,26 +62,8 @@ def main():
     html_file = project_root / "sandbox_ui" / "tinydesk.html"
     assert html_file.exists(), f"Missing HTML: {html_file}"
 
-    # URL selection priority:
-    # 1) explicit env override (Compose / remote browser)
-    # 2) legacy internal HTTP server for remote Selenium runs
-    # 3) local file:// fallback
-    _srv = None
     html_url = os.environ.get("TINYDESK_URL")
-
-    if html_url:
-        pass
-    elif os.environ.get("SELENIUM_REMOTE_URL"):
-        _serve_dir = project_root / "sandbox_ui"
-        _handler = functools.partial(
-            http.server.SimpleHTTPRequestHandler,
-            directory=str(_serve_dir),
-        )
-        _srv = http.server.ThreadingHTTPServer(("0.0.0.0", 8080), _handler)
-        threading.Thread(target=_srv.serve_forever, daemon=True).start()
-        html_url = "http://agent:8080/tinydesk.html"
-        time.sleep(0.3)
-    else:
+    if not html_url:
         html_url = f"file://{html_file}"
 
     run_dir = make_run_dir(project_root / "runs")
@@ -242,9 +221,6 @@ def main():
 
     finally:
         driver.quit()
-        if _srv is not None:
-            _srv.shutdown()
-            _srv.server_close()
 
 
 if __name__ == "__main__":
