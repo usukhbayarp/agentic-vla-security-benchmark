@@ -430,9 +430,10 @@ This phase enables:
 - Maintaining reproducibility and portability via Docker Compose
 - Supporting both Torch (GPU) and Stub (sanity) backends
 
-### Two-container design:
+### Three-service design
+
 1. agent (GPU container)
-- Runs your benchmark logic
+- Runs benchmark logic
 - Loads VLM (Qwen3-VL-4B)
 - Executes agent loop
 - Produces traces (runs/)
@@ -442,9 +443,17 @@ This phase enables:
 - Receives commands from agent
 - Handles UI rendering + interaction
 
+3. ui (static HTTP server)
+- Serves sandbox_ui/ over HTTP
+- Exposes TinyDesk at http://ui:8080/tinydesk.html
+
 The browser is executed in a separate container and accessed via Remote WebDriver
 (Selenium Grid), allowing architecture-independent execution (ARM GPU servers)
 while keeping the agent container lightweight.
+
+The `agent` container loads the UI via the `TINYDESK_URL` environment variable
+(e.g. `http://ui:8080/tinydesk.html`), enabling clean separation between agent logic and UI serving.
+When running locally (without Docker Compose), the UI is loaded via a `file://` path.
 
 Key Design Decisions:
 - ❌ No Chrome inside GPU container (avoids ARM/x86 issues)
@@ -457,24 +466,22 @@ Key Design Decisions:
 Build and bring up the browser container (required before running experiments):
 
 ```bash
-docker compose -f docker-compose.gpu.yml up --build -d browser
+docker compose -f docker-compose.gpu.yml up --build -d browser ui
 ```
 
 ### Run Experiments
 
-`--use-aliases` is required so the `browser` service hostname resolves when using `docker compose run`.
-
 Torch (GPU) — main experiment:
 
 ```bash
-docker compose -f docker-compose.gpu.yml run --rm --use-aliases agent \
+docker compose -f docker-compose.gpu.yml run --rm agent \
   python3 src/agent_sandbox.py --backend torch --mode dom
 ```
 
 Stub (sanity check):
 
 ```bash
-docker compose -f docker-compose.gpu.yml run --rm --use-aliases agent \
+docker compose -f docker-compose.gpu.yml run --rm agent \
   python3 src/agent_sandbox.py --backend stub --mode dom
 ```
 
@@ -500,4 +507,30 @@ These are logged explicitly in `trace.json` for each run.
 All experiments are reproducible via Docker Compose with fixed model, UI, and attack
 configurations. The environment isolates browser and model execution to ensure
 deterministic trace collection.
-The GPU backend uses a pinned Hugging Face model revision for `Qwen/Qwen3-VL-4B-Instruct`, configurable via `QWEN_VL_REVISION`. For strict reproducibility, both dependency versions and the Hugging Face model revision are pinned.
+The GPU backend uses a pinned Hugging Face model revision for `Qwen/Qwen3-VL-4B-Instruct`, configurable via the `QWEN_VL_REVISION` environment variable.
+For strict reproducibility:
+- dependency versions are pinned
+- model revision is pinned
+- UI is served via a dedicated container (`ui`)
+- browser execution is isolated via Selenium
+
+This ensures reproducible and deterministic trace generation across environments.
+### Optional Environment Variables
+
+You can configure cache location and model revision:
+
+```bash
+export HF_CACHE_DIR=~/.cache/huggingface
+# Default pinned model revision (used in experiments). If not overridden, the default revision defined in the repository is used.
+export QWEN_VL_REVISION=ebb281ec70b05090aa6165b016eac8ec08e71b17
+```
+
+Alternatively, create a `.env` file:
+
+```dotenv
+HF_CACHE_DIR=~/.cache/huggingface
+QWEN_VL_REVISION=ebb281ec70b05090aa6165b016eac8ec08e71b17
+```
+
+Docker Compose will automatically pick these up.
+
