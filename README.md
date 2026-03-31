@@ -515,12 +515,13 @@ For strict reproducibility:
 - browser execution is isolated via Selenium
 
 This ensures reproducible and deterministic trace generation across environments.
+
 ### Optional Environment Variables
 
 You can configure cache location and model revision:
 
 ```bash
-export HF_CACHE_DIR=~/.cache/huggingface
+export HF_CACHE_DIR="$HOME/.cache/huggingface"
 # Default pinned model revision (used in experiments). If not overridden, the default revision defined in the repository is used.
 export QWEN_VL_REVISION=ebb281ec70b05090aa6165b016eac8ec08e71b17
 ```
@@ -528,7 +529,8 @@ export QWEN_VL_REVISION=ebb281ec70b05090aa6165b016eac8ec08e71b17
 Alternatively, create a `.env` file:
 
 ```dotenv
-HF_CACHE_DIR=~/.cache/huggingface
+# Replace `/absolute/path/to/.cache/huggingface` with your local Hugging Face cache path.
+HF_CACHE_DIR=/absolute/path/to/.cache/huggingface
 QWEN_VL_REVISION=ebb281ec70b05090aa6165b016eac8ec08e71b17
 ```
 
