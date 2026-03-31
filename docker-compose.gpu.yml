@@ -16,6 +16,12 @@ services:
     image: python:3.12-slim
     working_dir: /srv
     command: python -m http.server 8080 --bind 0.0.0.0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/tinydesk.html')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
     volumes:
       - ./sandbox_ui:/srv:ro
 
@@ -27,14 +33,14 @@ services:
       browser:
         condition: service_healthy
       ui:
-        condition: service_started
+        condition: service_healthy
     gpus: all
     environment:
       - DOCKER=1
       - SELENIUM_REMOTE_URL=http://browser:4444/wd/hub
       - TINYDESK_URL=http://ui:8080/tinydesk.html
       - QWEN_VL_MODEL=Qwen/Qwen3-VL-4B-Instruct
-      - QWEN_VL_REVISION=ebb281ec70b05090aa6165b016eac8ec08e71b17
+      - QWEN_VL_REVISION=${QWEN_VL_REVISION:-ebb281ec70b05090aa6165b016eac8ec08e71b17}
     volumes:
-      - ~/.cache/huggingface:/root/.cache/huggingface
+      - ${HF_CACHE_DIR:-~/.cache/huggingface}:/root/.cache/huggingface
       - ./runs:/app/runs
