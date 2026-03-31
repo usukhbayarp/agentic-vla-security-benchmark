@@ -44,15 +44,13 @@ if not getattr(torch.Tensor.prod, "_vla_nvrtc_patched", False):
             is_target_error = (
                 "nvrtc" in msg
                 and _NVRTC_ARCH_ERR in msg
-                and isinstance(self, torch.Tensor)
                 and self.is_cuda
-                and self.dtype == torch.int64
             )
             if not is_target_error:
                 raise
 
             print(
-                "[workaround] CUDA int64 prod() hit NVRTC arch error; "
+                "[workaround] CUDA prod() hit NVRTC arch error; "
                 "retrying prod() on CPU and moving result back to CUDA."
             )
             result = _ORIG_TENSOR_PROD(self.detach().cpu(), *args, **kwargs)
