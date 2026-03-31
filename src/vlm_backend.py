@@ -35,11 +35,16 @@ def load_backend(
         return vlm_choose_action_with_logprobs, meta
 
     if name == "torch":
-        from vlm_torch import vlm_choose_action_with_logprobs
+        from vlm_torch import (
+            vlm_choose_action_with_logprobs,
+            MODEL_PATH,
+            MODEL_REVISION,
+        )
 
         meta = {
             "provider": "torch_vlm",
-            "name": "Qwen/Qwen3-VL-4B-Instruct",
+            "name": MODEL_PATH,
+            "revision": MODEL_REVISION,
         }
         return vlm_choose_action_with_logprobs, meta
 
