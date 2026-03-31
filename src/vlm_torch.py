@@ -31,6 +31,36 @@ else:
 print("Torch backend device:", _DEVICE)
 print("Torch backend dtype:", _DTYPE)
 
+_NVRTC_ARCH_ERR = "invalid value for --gpu-architecture"
+
+if not getattr(torch.Tensor.prod, "_vla_nvrtc_patched", False):
+    _ORIG_TENSOR_PROD = torch.Tensor.prod
+
+    def _safe_tensor_prod(self, *args, **kwargs):
+        try:
+            return _ORIG_TENSOR_PROD(self, *args, **kwargs)
+        except RuntimeError as e:
+            msg = str(e)
+            is_target_error = (
+                "nvrtc" in msg
+                and _NVRTC_ARCH_ERR in msg
+                and isinstance(self, torch.Tensor)
+                and self.is_cuda
+                and self.dtype == torch.int64
+            )
+            if not is_target_error:
+                raise
+
+            print(
+                "[workaround] CUDA int64 prod() hit NVRTC arch error; "
+                "retrying prod() on CPU and moving result back to CUDA."
+            )
+            result = _ORIG_TENSOR_PROD(self.detach().cpu(), *args, **kwargs)
+            return result.to(self.device)
+
+    _safe_tensor_prod._vla_nvrtc_patched = True
+    torch.Tensor.prod = _safe_tensor_prod
+
 
 def _load_model_and_processor():
     """
