@@ -1,0 +1,37 @@
+FROM nvcr.io/nvidia/pytorch:24.08-py3
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PIP_NO_CACHE_DIR=1
+ENV DOCKER=1
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    ca-certificates \
+    --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.gpu.txt .
+
+# Keep the app-layer dependencies pinned exactly as in the benchmark.
+# We do NOT reinstall torch/torchvision/torchaudio here because the NGC image already provides
+# an optimized PyTorch stack for NVIDIA hardware.
+RUN python3 -m pip install --upgrade pip setuptools wheel && \
+    python3 -m pip install \
+      pillow==12.1.1 \
+      selenium==4.41.0 \
+      webdriver-manager==4.0.2 \
+      accelerate==1.13.0 \
+      huggingface_hub==1.8.0 \
+      tokenizers==0.22.2 \
+      safetensors==0.7.0 && \
+    python3 -m pip install \
+      git+https://github.com/huggingface/transformers@8213e0d920d52cb00dcade16b6d1f6e952ac0a8c
+
+COPY . .
+RUN mkdir -p /app/runs
+
+CMD ["python3", "src/agent_sandbox.py", "--backend", "torch", "--mode", "dom"]
