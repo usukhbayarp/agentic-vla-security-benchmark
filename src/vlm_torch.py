@@ -41,10 +41,11 @@ if torch.cuda.is_available():
 # -----------------------------
 # GB10 / NVRTC workaround
 # -----------------------------
+_ENABLE_NVRTC_WORKAROUND = os.environ.get("TORCH_VLA_NVRTC_WORKAROUND", "1") == "1"
 _NVRTC_ARCH_ERR = "invalid value for --gpu-architecture"
 _WORKAROUND_FIRES = 0
 
-if not getattr(torch.Tensor.prod, "_vla_nvrtc_patched", False):
+if _ENABLE_NVRTC_WORKAROUND and not getattr(torch.Tensor.prod, "_vla_nvrtc_patched", False):
     _ORIG_TENSOR_PROD = torch.Tensor.prod
 
     def _safe_tensor_prod(self, *args, **kwargs):
@@ -279,6 +280,7 @@ def vlm_choose_action_with_logprobs(
         "torch_arch_list": list(_TORCH_ARCH_LIST) if _TORCH_ARCH_LIST is not None else None,
         "nvrtc_workaround_fired": workaround_delta > 0,
         "nvrtc_workaround_count": int(workaround_delta),
+        "nvrtc_workaround_enabled": _ENABLE_NVRTC_WORKAROUND,
     }
 
     return text, mi
