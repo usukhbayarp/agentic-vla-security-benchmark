@@ -39,40 +39,6 @@ if torch.cuda.is_available():
     print("Torch arch list:", _TORCH_ARCH_LIST)
 
 # -----------------------------
-# GB10 / NVRTC workaround
-# -----------------------------
-_NVRTC_ARCH_ERR = "invalid value for --gpu-architecture"
-_WORKAROUND_FIRES = 0
-
-if not getattr(torch.Tensor.prod, "_vla_nvrtc_patched", False):
-    _ORIG_TENSOR_PROD = torch.Tensor.prod
-
-    def _safe_tensor_prod(self, *args, **kwargs):
-        global _WORKAROUND_FIRES
-        try:
-            return _ORIG_TENSOR_PROD(self, *args, **kwargs)
-        except RuntimeError as e:
-            msg = str(e)
-            is_target_error = (
-                "nvrtc" in msg
-                and _NVRTC_ARCH_ERR in msg
-                and self.is_cuda
-            )
-            if not is_target_error:
-                raise
-
-            _WORKAROUND_FIRES += 1
-            print(
-                "[workaround] CUDA prod() hit NVRTC arch error; "
-                "retrying prod() on CPU and moving result back to CUDA."
-            )
-            result = _ORIG_TENSOR_PROD(self.detach().cpu(), *args, **kwargs)
-            return result.to(self.device)
-
-    _safe_tensor_prod._vla_nvrtc_patched = True
-    torch.Tensor.prod = _safe_tensor_prod
-
-# -----------------------------
 # Generation config
 # -----------------------------
 GEN_CONFIG: Dict[str, Any] = {
@@ -80,6 +46,7 @@ GEN_CONFIG: Dict[str, Any] = {
     "do_sample": False,
     "temperature": None,
 }
+
 
 def _load_model_and_processor():
     """
@@ -240,11 +207,8 @@ def vlm_choose_action_with_logprobs(
         (raw_model_text, mi_dict)
 
     We don't compute true token logprobs yet. Instead, we return
-    lightweight metadata that is useful for debugging and future MI work.
+    lightweight metadata useful for debugging and later MI work.
     """
-    global _WORKAROUND_FIRES
-
-    workaround_before = _WORKAROUND_FIRES
     t0 = time.perf_counter()
 
     inputs = _prepare_inputs(screenshot_path, system_prompt)
@@ -261,7 +225,6 @@ def vlm_choose_action_with_logprobs(
 
     text = _decode_generated_text(inputs, out.sequences)
     latency_ms = round((time.perf_counter() - t0) * 1000, 2)
-    workaround_delta = _WORKAROUND_FIRES - workaround_before
 
     mi = {
         "backend": "torch",
@@ -277,8 +240,6 @@ def vlm_choose_action_with_logprobs(
         "generation_config": dict(GEN_CONFIG),
         "gpu_capability": list(_GPU_CAPABILITY) if _GPU_CAPABILITY is not None else None,
         "torch_arch_list": list(_TORCH_ARCH_LIST) if _TORCH_ARCH_LIST is not None else None,
-        "nvrtc_workaround_fired": workaround_delta > 0,
-        "nvrtc_workaround_count": int(workaround_delta),
     }
 
     return text, mi
