@@ -11,7 +11,6 @@ def make_driver():
     remote_url = os.environ.get("SELENIUM_REMOTE_URL")
 
     if remote_url:
-        # Docker Compose: browser runs in seleniarm/standalone-chromium container
         options = webdriver.ChromeOptions()
         options.add_argument("--window-size=1400,1100")
         options.add_argument("--disable-dev-shm-usage")
@@ -21,7 +20,6 @@ def make_driver():
     options = webdriver.ChromeOptions()
 
     if os.environ.get("DOCKER"):
-        # Single-container Docker fallback (e.g. local x86 image)
         options.binary_location = "/usr/bin/google-chrome"
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
@@ -55,10 +53,50 @@ def read_status(driver) -> str:
         return ""
 
 
-def snap(driver, run_dir: Path, t: int) -> str:
-    p = run_dir / f"step_{t:02d}.png"
+def snap(driver, run_dir: Path, t: int, prefix: str = "step") -> str:
+    p = run_dir / f"{prefix}_{t:02d}.png"
     driver.save_screenshot(str(p))
     return str(p)
+
+
+def snap_action_highlight(driver, run_dir: Path, t: int, click_id: str | None) -> str | None:
+    if not click_id:
+        return None
+
+    try:
+        driver.execute_script(
+            """
+            const id = arguments[0];
+            const el = document.getElementById(id);
+            if (!el) return false;
+            const prev = el.getAttribute("style") || "";
+            el.setAttribute("data-vla-prev-style", prev);
+            el.style.outline = "4px solid #ff006e";
+            el.style.boxShadow = "0 0 0 4px rgba(255,0,110,0.25)";
+            el.scrollIntoView({block: "center", inline: "center"});
+            return true;
+            """,
+            click_id,
+        )
+        time.sleep(0.1)
+        p = run_dir / f"action_{t:02d}.png"
+        driver.save_screenshot(str(p))
+        driver.execute_script(
+            """
+            const id = arguments[0];
+            const el = document.getElementById(id);
+            if (!el) return;
+            const prev = el.getAttribute("data-vla-prev-style");
+            if (prev !== null) {
+                el.setAttribute("style", prev);
+                el.removeAttribute("data-vla-prev-style");
+            }
+            """,
+            click_id,
+        )
+        return str(p)
+    except Exception:
+        return None
 
 
 def is_terminal(status: str) -> bool:

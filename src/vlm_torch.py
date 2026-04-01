@@ -1,4 +1,3 @@
-# src/vlm_torch.py
 from __future__ import annotations
 
 import os
@@ -31,12 +30,25 @@ else:
 print("Torch backend device:", _DEVICE)
 print("Torch backend dtype:", _DTYPE)
 
+_GPU_CAPABILITY = None
+_TORCH_ARCH_LIST = None
+if torch.cuda.is_available():
+    _GPU_CAPABILITY = torch.cuda.get_device_capability(0)
+    _TORCH_ARCH_LIST = torch.cuda.get_arch_list()
+    print("GPU capability:", _GPU_CAPABILITY)
+    print("Torch arch list:", _TORCH_ARCH_LIST)
+
+# -----------------------------
+# GB10 / NVRTC workaround
+# -----------------------------
 _NVRTC_ARCH_ERR = "invalid value for --gpu-architecture"
+_WORKAROUND_FIRES = 0
 
 if not getattr(torch.Tensor.prod, "_vla_nvrtc_patched", False):
     _ORIG_TENSOR_PROD = torch.Tensor.prod
 
     def _safe_tensor_prod(self, *args, **kwargs):
+        global _WORKAROUND_FIRES
         try:
             return _ORIG_TENSOR_PROD(self, *args, **kwargs)
         except RuntimeError as e:
@@ -49,6 +61,7 @@ if not getattr(torch.Tensor.prod, "_vla_nvrtc_patched", False):
             if not is_target_error:
                 raise
 
+            _WORKAROUND_FIRES += 1
             print(
                 "[workaround] CUDA prod() hit NVRTC arch error; "
                 "retrying prod() on CPU and moving result back to CUDA."
@@ -59,6 +72,14 @@ if not getattr(torch.Tensor.prod, "_vla_nvrtc_patched", False):
     _safe_tensor_prod._vla_nvrtc_patched = True
     torch.Tensor.prod = _safe_tensor_prod
 
+# -----------------------------
+# Generation config
+# -----------------------------
+GEN_CONFIG: Dict[str, Any] = {
+    "max_new_tokens": 32,
+    "do_sample": False,
+    "temperature": None,
+}
 
 def _load_model_and_processor():
     """
@@ -82,6 +103,7 @@ def _load_model_and_processor():
     )
 
     model = None
+    attn_impl = "eager"
 
     if _DEVICE == "cuda":
         try:
@@ -91,6 +113,7 @@ def _load_model_and_processor():
                 attn_implementation="flash_attention_2",
                 **common_kwargs,
             )
+            attn_impl = "flash_attention_2"
             print("Loaded model with flash_attention_2")
         except Exception as e:
             print("flash_attention_2 unavailable, falling back:", e)
@@ -107,10 +130,10 @@ def _load_model_and_processor():
         model = model.to(_DEVICE)
 
     model.eval()
-    return model, processor
+    return model, processor, attn_impl
 
 
-model, processor = _load_model_and_processor()
+model, processor, ATTN_IMPLEMENTATION = _load_model_and_processor()
 
 
 def _build_messages(
@@ -161,7 +184,6 @@ def _prepare_inputs(
         return_tensors="pt",
     )
 
-    # Move tensors to device only when needed
     if _DEVICE == "cuda":
         inputs = inputs.to(model.device)
     else:
@@ -201,14 +223,8 @@ def vlm_choose_action(
     """
     inputs = _prepare_inputs(screenshot_path, system_prompt)
 
-    gen_kwargs = dict(
-        max_new_tokens=32,
-        do_sample=False,
-        temperature=None,
-    )
-
     with torch.no_grad():
-        generated_ids = model.generate(**inputs, **gen_kwargs)
+        generated_ids = model.generate(**inputs, **GEN_CONFIG)
 
     return _decode_generated_text(inputs, generated_ids)
 
@@ -226,15 +242,16 @@ def vlm_choose_action_with_logprobs(
     We don't compute true token logprobs yet. Instead, we return
     lightweight metadata that is useful for debugging and future MI work.
     """
+    global _WORKAROUND_FIRES
+
+    workaround_before = _WORKAROUND_FIRES
     t0 = time.perf_counter()
 
     inputs = _prepare_inputs(screenshot_path, system_prompt)
     input_len = int(inputs["input_ids"].shape[-1])
 
     gen_kwargs = dict(
-        max_new_tokens=32,
-        do_sample=False,
-        temperature=None,
+        **GEN_CONFIG,
         return_dict_in_generate=True,
         output_scores=False,
     )
@@ -244,16 +261,24 @@ def vlm_choose_action_with_logprobs(
 
     text = _decode_generated_text(inputs, out.sequences)
     latency_ms = round((time.perf_counter() - t0) * 1000, 2)
+    workaround_delta = _WORKAROUND_FIRES - workaround_before
 
     mi = {
         "backend": "torch",
         "model_name": MODEL_PATH,
         "model_revision": MODEL_REVISION,
         "device": str(model.device) if hasattr(model, "device") else _DEVICE,
+        "dtype": str(_DTYPE),
+        "attn_implementation": ATTN_IMPLEMENTATION,
         "input_tokens": input_len,
         "generated_tokens": int(out.sequences.shape[-1] - input_len),
         "latency_ms": latency_ms,
         "image_provided": screenshot_path is not None,
+        "generation_config": dict(GEN_CONFIG),
+        "gpu_capability": list(_GPU_CAPABILITY) if _GPU_CAPABILITY is not None else None,
+        "torch_arch_list": list(_TORCH_ARCH_LIST) if _TORCH_ARCH_LIST is not None else None,
+        "nvrtc_workaround_fired": workaround_delta > 0,
+        "nvrtc_workaround_count": int(workaround_delta),
     }
 
     return text, mi

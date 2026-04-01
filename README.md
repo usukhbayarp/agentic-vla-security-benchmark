@@ -494,14 +494,6 @@ and should show `executed_any: true` in the final trace summary.
 docker compose -f docker-compose.gpu.yml down
 ```
 
-## Failure Modes Observed
-
-- **Format violations** — invalid action outputs (e.g., unparseable CLICK strings)
-- **Conservative bias** — repeated CANCEL regardless of ticket context
-- **Multi-step drift** — failure to complete confirmation across sequential steps
-
-These are logged explicitly in `trace.json` for each run.
-
 ## Reproducibility
 
 All experiments are reproducible via Docker Compose with fixed model, UI, and attack
