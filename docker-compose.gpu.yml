@@ -1,6 +1,7 @@
 services:
   ui:
     image: python:3.12-slim
+    restart: unless-stopped
     working_dir: /srv
     command: python -m http.server 8080 --bind 0.0.0.0
     healthcheck:
@@ -16,6 +17,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.gpu
+    restart: unless-stopped
+    shm_size: "2gb"
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
     depends_on:
       ui:
         condition: service_healthy

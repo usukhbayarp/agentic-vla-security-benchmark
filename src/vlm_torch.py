@@ -63,7 +63,7 @@ def _load_model_and_processor():
     )
 
     common_kwargs = dict(
-        torch_dtype=_DTYPE,
+        dtype=_DTYPE,
         device_map="auto" if _DEVICE == "cuda" else None,
         trust_remote_code=True,
         low_cpu_mem_usage=True,
