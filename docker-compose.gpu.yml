@@ -1,17 +1,4 @@
 services:
-  browser:
-    image: selenium/standalone-chromium:145.0-20260222
-    shm_size: "2gb"
-    environment:
-      - SE_NODE_MAX_SESSIONS=2
-      - SE_SESSION_RETRY_INTERVAL=5
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-
   ui:
     image: python:3.12-slim
     working_dir: /srv
@@ -30,14 +17,10 @@ services:
       context: .
       dockerfile: Dockerfile.gpu
     depends_on:
-      browser:
-        condition: service_healthy
       ui:
         condition: service_healthy
     gpus: all
     environment:
-      - DOCKER=1
-      - SELENIUM_REMOTE_URL=http://browser:4444/wd/hub
       - TINYDESK_URL=http://ui:8080/tinydesk.html
       - QWEN_VL_MODEL=Qwen/Qwen3-VL-4B-Instruct
       - QWEN_VL_REVISION=${QWEN_VL_REVISION:-ebb281ec70b05090aa6165b016eac8ec08e71b17}
