@@ -103,7 +103,7 @@ agentic-vla-security-benchmark/
     prompts.py         # Policy prompts + mode-specific extensions
     observations.py    # DOM observations + SoM mapping
     som.py             # Set-of-Marks rendering
-    browser_env.py     # Selenium environment helpers
+    browser_env.py     # Playwright environment helpers
     attacks.py         # Visual injection routing
     vlm_mlx.py         # MLX-VLM interface
     vlm_stub.py        # Deterministic stub model for testing
@@ -174,6 +174,7 @@ Different model backends can be integrated by replacing the VLM interface.
 python -m venv vla_env
 source vla_env/bin/activate
 pip install -r requirements.txt
+python -m playwright install chromium
 ```
 
 ## Running the Sandbox
@@ -198,7 +199,7 @@ python src/agent_sandbox.py --mode som
 
 
 Each run will:
-- Launch the TinyDesk UI via Selenium
+- Launch the TinyDesk UI via Playwright
 - Generate an observation (screenshot / DOM / SoM)
 - Query the VLM
 - Execute the chosen action
@@ -357,132 +358,58 @@ pip install -r requirements-dev.txt
 pytest -q
 ```
 
-## Docker (Phase 3A: local CPU/headless harness)
+## Docker (Playwright GPU Runtime)
 
-A first Docker split is implemented for reproducible, local containerized runs of the benchmark harness using the **stub backend**.
+This branch uses a simplified two-service Docker Compose setup:
 
-### What this supports
-- Headless browser execution inside Docker
-- TinyDesk environment loading via local `file://` path
-- All three observation modes:
-  - `vision`
-  - `dom`
-  - `som`
-- Persistent output traces and screenshots via mounted `runs/`
+1. `agent`
+- Runs benchmark logic
+- Loads the model backend
+- Launches Playwright Chromium inside the same container
+- Produces traces under `runs/`
 
-### What this does not include yet
-- GPU support
-- PyTorch / CUDA inference inside Docker
-- MLX inside Docker
+2. `ui`
+- Serves `sandbox_ui/` over HTTP
+- Exposes TinyDesk at `http://ui:8080/tinydesk.html`
 
-This phase is intended to validate:
-- containerized Selenium/browser execution
-- repo-relative path handling
-- benchmark trace generation
-- DOM / Vision / SoM compatibility in a reproducible environment
+### Design
+
+This Playwright-based setup removes the old Selenium browser service.
+The browser now runs directly inside the `agent` container.
+
+This keeps the runtime simpler while preserving:
+- reproducible containerized execution
+- HTTP-served UI loading via `TINYDESK_URL`
+- support for `vision`, `dom`, and `som`
+- Torch and stub backends
 
 ### Build
 
 ```bash
-docker build -t obssec .
+docker compose -f docker-compose.gpu.yml build
 ```
 
-### Run
-
-Default run (stub + DOM):
+### Start UI
 
 ```bash
-docker run --rm -v "$(pwd)/runs:/app/runs" obssec
-```
-
-Vision mode:
-
-```bash
-docker run --rm -v "$(pwd)/runs:/app/runs" obssec \
-  python src/agent_sandbox.py --backend stub --mode vision
-```
-
-SoM mode:
-
-```bash
-docker run --rm -v "$(pwd)/runs:/app/runs" obssec \
-  python src/agent_sandbox.py --backend stub --mode som --script 5 2
-```
-
-DOM mode with scripted safe path:
-
-```bash
-docker run --rm -v "$(pwd)/runs:/app/runs" obssec \
-  python src/agent_sandbox.py --backend stub --mode dom --script btn_reset btn_confirm
-```
-
-
-## Docker (Phase 3B: GPU + Remote Browser Execution)
-
-### Overview
-
-Phase 3B introduces a fully containerized, GPU-accelerated execution pipeline with a decoupled browser environment.
-
-This phase enables:
-
-- Running Vision-Language-Action (VLA) agents on remote GPU (CUDA)
-- Executing browser interactions via remote Selenium (ARM-compatible)
-- Maintaining reproducibility and portability via Docker Compose
-- Supporting both Torch (GPU) and Stub (sanity) backends
-
-### Three-service design
-
-1. agent (GPU container)
-- Runs benchmark logic
-- Loads VLM (Qwen3-VL-4B)
-- Executes agent loop
-- Produces traces (runs/)
-
-2. browser (Selenium container)
-- Runs Chromium via Selenium Grid
-- Receives commands from agent
-- Handles UI rendering + interaction
-
-3. ui (static HTTP server)
-- Serves sandbox_ui/ over HTTP
-- Exposes TinyDesk at http://ui:8080/tinydesk.html
-
-The browser is executed in a separate container and accessed via Remote WebDriver
-(Selenium Grid), allowing architecture-independent execution (ARM GPU servers)
-while keeping the agent container lightweight.
-
-The `agent` container loads the UI via the `TINYDESK_URL` environment variable
-(e.g. `http://ui:8080/tinydesk.html`), enabling clean separation between agent logic and UI serving.
-When running locally (without Docker Compose), the UI is loaded via a `file://` path.
-
-Key Design Decisions:
-- ❌ No Chrome inside GPU container (avoids ARM/x86 issues)
-- ✅ Remote WebDriver via SELENIUM_REMOTE_URL
-- ✅ HuggingFace cache mounted → avoids repeated downloads
-- ✅ Backend abstraction (--backend torch | stub)
-
-### Start services
-
-Build and bring up the browser container (required before running experiments):
-
-```bash
-docker compose -f docker-compose.gpu.yml up --build -d browser ui
+docker compose -f docker-compose.gpu.yml up -d ui
 ```
 
 ### Run Experiments
-
-Torch (GPU) — main experiment:
-
-```bash
-docker compose -f docker-compose.gpu.yml run --rm agent \
-  python3 src/agent_sandbox.py --backend torch --mode dom
-```
 
 Stub (sanity check):
 
 ```bash
 docker compose -f docker-compose.gpu.yml run --rm agent \
   python3 src/agent_sandbox.py --backend stub --mode dom
+```
+
+
+Torch (GPU) — main experiment:
+
+```bash
+docker compose -f docker-compose.gpu.yml run --rm agent \
+  python3 src/agent_sandbox.py --backend torch --mode dom
 ```
 
 A successful run saves a new directory under `runs/` containing `trace.json`
@@ -496,17 +423,13 @@ docker compose -f docker-compose.gpu.yml down
 
 ## Reproducibility
 
-All experiments are reproducible via Docker Compose with fixed model, UI, and attack
-configurations. The environment isolates browser and model execution to ensure
-deterministic trace collection.
-The GPU backend uses a pinned Hugging Face model revision for `Qwen/Qwen3-VL-4B-Instruct`, configurable via the `QWEN_VL_REVISION` environment variable.
-For strict reproducibility:
-- dependency versions are pinned
-- model revision is pinned
-- UI is served via a dedicated container (`ui`)
-- browser execution is isolated via Selenium
+For this Playwright-based Docker runtime:
 
-This ensures reproducible and deterministic trace generation across environments.
+- dependency versions are pinned
+- the model revision is pinned
+- the UI is served via a dedicated ui container
+- the browser is installed inside the agent image through Playwright
+- traces record configuration, attack settings, and outputs for later analysis
 
 ### Optional Environment Variables
 

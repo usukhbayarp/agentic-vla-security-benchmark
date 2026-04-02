@@ -3,7 +3,7 @@ FROM nvcr.io/nvidia/pytorch@sha256:417cbf33f87b5378849df37983552cd1f8bc8b62fe1ce
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=1
-ENV DOCKER=1
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 WORKDIR /app
 
@@ -17,16 +17,9 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.gpu.txt .
 
 RUN python3 -m pip install --upgrade pip setuptools wheel && \
-    python3 -m pip install \
-      pillow==12.1.1 \
-      selenium==4.41.0 \
-      webdriver-manager==4.0.2 \
-      accelerate==1.13.0 \
-      huggingface_hub==1.8.0 \
-      tokenizers==0.22.2 \
-      safetensors==0.7.0 && \
-    python3 -m pip install \
-      git+https://github.com/huggingface/transformers@8213e0d920d52cb00dcade16b6d1f6e952ac0a8c
+    python3 -m pip install -r requirements.gpu.txt
+
+RUN python3 -m playwright install chromium --with-deps
 
 COPY . .
 RUN mkdir -p /app/runs
