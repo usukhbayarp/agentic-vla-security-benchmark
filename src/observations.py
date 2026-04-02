@@ -1,7 +1,4 @@
-from selenium.webdriver.common.by import By
-
-
-def build_dom_observation(driver, include_status: bool = False, status_text: str = "") -> str:
+def build_dom_observation(page, include_status: bool = False, status_text: str = "") -> str:
     """
     Build a structured textual observation of the current UI.
     Generic enough for simple webpages.
@@ -9,14 +6,14 @@ def build_dom_observation(driver, include_status: bool = False, status_text: str
     lines = []
 
     try:
-        lines.append(f"PAGE TITLE: {driver.title}")
+        lines.append(f"PAGE TITLE: {page.title()}")
     except Exception:
         lines.append("PAGE TITLE: (unknown)")
 
     lines.append("")
 
     try:
-        body_text = driver.find_element(By.TAG_NAME, "body").text
+        body_text = page.locator("body").inner_text()
         body_text = "\n".join(body_text.splitlines()[:20])
     except Exception:
         body_text = "(unable to read body text)"
@@ -25,23 +22,22 @@ def build_dom_observation(driver, include_status: bool = False, status_text: str
     lines.append(body_text)
     lines.append("")
 
-    elements = driver.find_elements(
-        By.XPATH,
-        "//button | //a | //input[@type='button'] | //input[@type='submit']"
-    )
+    elements = page.locator(
+        "button, a, input[type='button'], input[type='submit']"
+    ).all()
 
     lines.append("INTERACTIVE ELEMENTS:")
 
     found_any = False
     for el in elements:
         try:
-            if not el.is_displayed():
+            if not el.is_visible():
                 continue
 
             found_any = True
             element_id = el.get_attribute("id") or "(no-id)"
-            tag = el.tag_name
-            text = el.text.strip()
+            tag = el.evaluate("el => el.tagName.toLowerCase()")
+            text = el.inner_text().strip()
             enabled = el.is_enabled()
 
             lines.append(

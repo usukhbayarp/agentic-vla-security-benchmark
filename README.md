@@ -174,6 +174,7 @@ Different model backends can be integrated by replacing the VLM interface.
 python -m venv vla_env
 source vla_env/bin/activate
 pip install -r requirements.txt
+playwright install chromium
 ```
 
 ## Running the Sandbox
@@ -198,7 +199,7 @@ python src/agent_sandbox.py --mode som
 
 
 Each run will:
-- Launch the TinyDesk UI via Selenium
+- Launch the TinyDesk UI via Playwright
 - Generate an observation (screenshot / DOM / SoM)
 - Query the VLM
 - Execute the chosen action

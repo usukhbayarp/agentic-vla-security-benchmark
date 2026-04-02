@@ -1,38 +1,35 @@
-import os
 import time
 from pathlib import Path
 
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
+from playwright.sync_api import sync_playwright
 
 
-def make_driver():
-    remote_url = os.environ.get("SELENIUM_REMOTE_URL")
+def make_page():
+    """
+    Returns (page, browser, playwright_instance).
 
-    if remote_url:
-        options = webdriver.ChromeOptions()
-        options.add_argument("--window-size=1400,1100")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--no-sandbox")
-        return webdriver.Remote(command_executor=remote_url, options=options)
+    Caller must clean up with:
+        browser.close()
+        playwright_instance.stop()
+    """
+    pw = sync_playwright().start()
 
-    options = webdriver.ChromeOptions()
+    browser = pw.chromium.launch(
+        headless=True,
+        args=[
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+        ],
+    )
 
-    if os.environ.get("DOCKER"):
-        options.binary_location = "/usr/bin/google-chrome"
-        options.add_argument("--headless=new")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--window-size=1400,1100")
-        service = Service("/usr/local/bin/chromedriver")
-        return webdriver.Chrome(service=service, options=options)
-
-    options.add_argument("--window-size=1400,1100")
-    from webdriver_manager.chrome import ChromeDriverManager
-    service = Service(ChromeDriverManager().install())
-    return webdriver.Chrome(service=service, options=options)
+    # device_scale_factor=1 is important for local/Docker parity and SoM alignment
+    context = browser.new_context(
+        viewport={"width": 1400, "height": 1100},
+        device_scale_factor=1,
+    )
+    page = context.new_page()
+    return page, browser, pw
 
 
 def repo_root(start: Path) -> Path:
@@ -46,52 +43,54 @@ def repo_root(start: Path) -> Path:
     return start.resolve().parents[1]
 
 
-def read_status(driver) -> str:
+def read_status(page) -> str:
     try:
-        return driver.find_element(By.ID, "status").text
+        return page.locator("#status").inner_text()
     except Exception:
         return ""
 
 
-def snap(driver, run_dir: Path, t: int, prefix: str = "step") -> str:
+def snap(page, run_dir: Path, t: int, prefix: str = "step") -> str:
     p = run_dir / f"{prefix}_{t:02d}.png"
-    driver.save_screenshot(str(p))
+    page.screenshot(path=str(p))
     return str(p)
 
 
-def snap_action_highlight(driver, run_dir: Path, t: int, click_id: str | None) -> str | None:
+def snap_action_highlight(page, run_dir: Path, t: int, click_id: str | None) -> str | None:
     if not click_id:
         return None
 
     try:
-        driver.execute_script(
-            """
-            const id = arguments[0];
-            const el = document.getElementById(id);
-            if (!el) return false;
-            const prev = el.getAttribute("style") || "";
-            el.setAttribute("data-vla-prev-style", prev);
-            el.style.outline = "4px solid #ff006e";
-            el.style.boxShadow = "0 0 0 4px rgba(255,0,110,0.25)";
-            el.scrollIntoView({block: "center", inline: "center"});
-            return true;
-            """,
+        ok = page.evaluate(
+            """(id) => {
+                const el = document.getElementById(id);
+                if (!el) return false;
+                const prev = el.getAttribute("style") || "";
+                el.setAttribute("data-vla-prev-style", prev);
+                el.style.outline = "4px solid #ff006e";
+                el.style.boxShadow = "0 0 0 4px rgba(255,0,110,0.25)";
+                el.scrollIntoView({block: "center", inline: "center"});
+                return true;
+            }""",
             click_id,
         )
+        if not ok:
+            return None
+
         time.sleep(0.1)
         p = run_dir / f"action_{t:02d}.png"
-        driver.save_screenshot(str(p))
-        driver.execute_script(
-            """
-            const id = arguments[0];
-            const el = document.getElementById(id);
-            if (!el) return;
-            const prev = el.getAttribute("data-vla-prev-style");
-            if (prev !== null) {
-                el.setAttribute("style", prev);
-                el.removeAttribute("data-vla-prev-style");
-            }
-            """,
+        page.screenshot(path=str(p))
+
+        page.evaluate(
+            """(id) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const prev = el.getAttribute("data-vla-prev-style");
+                if (prev !== null) {
+                    el.setAttribute("style", prev);
+                    el.removeAttribute("data-vla-prev-style");
+                }
+            }""",
             click_id,
         )
         return str(p)
@@ -114,26 +113,26 @@ def is_terminal(status: str) -> bool:
     )
 
 
-def in_confirm_phase(driver) -> bool:
+def in_confirm_phase(page) -> bool:
     try:
-        return driver.find_element(By.ID, "phase_confirm").is_displayed()
+        return page.locator("#phase_confirm").is_visible()
     except Exception:
         return False
 
 
-def allowed_actions(driver) -> set[str]:
-    if in_confirm_phase(driver):
+def allowed_actions(page) -> set[str]:
+    if in_confirm_phase(page):
         return {"btn_confirm", "btn_cancel"}
 
     allowed = {"btn_reset", "btn_request_info", "btn_escalate", "btn_close", "btn_admin"}
 
     for btn in list(allowed):
         try:
-            el = driver.find_element(By.ID, btn)
-            if not el.is_displayed() or not el.is_enabled():
+            el = page.locator(f"#{btn}")
+            if not el.is_visible() or not el.is_enabled():
                 allowed.discard(btn)
                 continue
-            if el.get_attribute("disabled"):
+            if el.get_attribute("disabled") is not None:
                 allowed.discard(btn)
         except Exception:
             allowed.discard(btn)
@@ -141,7 +140,7 @@ def allowed_actions(driver) -> set[str]:
     return allowed
 
 
-def click_action(driver, click_id: str):
-    el = driver.find_element(By.ID, click_id)
+def click_action(page, click_id: str):
+    el = page.locator(f"#{click_id}")
     el.click()
     time.sleep(0.25)

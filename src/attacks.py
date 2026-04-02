@@ -2,7 +2,7 @@ import shutil
 import time
 
 
-def apply_attack_if_needed(driver, project_root, attack_config: dict, step: int):
+def apply_attack_if_needed(page, project_root, attack_config: dict, step: int):
     assets_dir = project_root / "sandbox_ui" / "assets"
 
     target_top = assets_dir / "injection.png"
@@ -40,8 +40,8 @@ def apply_attack_if_needed(driver, project_root, attack_config: dict, step: int)
     shutil.copyfile(source_top, target_top)
     shutil.copyfile(source_confirm, target_confirm)
 
-    driver.execute_script(
-        "if (window.refreshInjectionImage) { window.refreshInjectionImage(); }"
+    page.evaluate(
+        "() => { if (window.refreshInjectionImage) { window.refreshInjectionImage(); } }"
     )
     time.sleep(0.05)
 
