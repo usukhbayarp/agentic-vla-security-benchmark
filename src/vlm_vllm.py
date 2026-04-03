@@ -10,7 +10,7 @@ from vllm import LLM, SamplingParams
 MODEL_PATH = os.environ.get("QWEN_VL_MODEL", "Qwen/Qwen3-VL-4B-Instruct")
 MODEL_REVISION = os.environ.get("QWEN_VL_REVISION", "ebb281ec70b05090aa6165b016eac8ec08e71b17")
 
-# Match the current Torch backend's deterministic-ish settings as closely as possible.
+# Greedy-ish config to stay close to current torch backend behavior.
 _SAMPLING_PARAMS = SamplingParams(
     temperature=0.0,
     max_tokens=32,
@@ -19,7 +19,10 @@ _SAMPLING_PARAMS = SamplingParams(
 
 print("Loading vLLM VLM:", MODEL_PATH)
 
-# Match the Torch backend's image pixel bounds to reduce preprocessing drift.
+# Match the Torch backend's image bounds to reduce preprocessing drift.
+# Torch currently uses:
+#   min_pixels = 224 * 224
+#   max_pixels = 512 * 512
 _LLM = LLM(
     model=MODEL_PATH,
     revision=MODEL_REVISION,
@@ -46,10 +49,11 @@ def _build_messages(
     - DOM mode: text only
     - Vision / SoM: image + text
 
-    We use image_pil for in-process offline inference.
+    Use image_pil for offline in-process multimodal input.
     """
     if screenshot_path is not None:
-        image = Image.open(screenshot_path).convert("RGB")
+        with Image.open(screenshot_path) as img:
+            image = img.convert("RGB")
         return [
             {
                 "role": "user",
@@ -75,7 +79,7 @@ def vlm_choose_action_with_logprobs(
     system_prompt: str,
 ) -> Tuple[str, Dict[str, Any]]:
     """
-    Mirror the public contract used by the existing backends:
+    Match the backend contract used by the benchmark:
         input:  screenshot_path | None, prompt
         output: generated_text, metadata_dict
     """
