@@ -48,4 +48,18 @@ def load_backend(
         }
         return vlm_choose_action_with_logprobs, meta
 
+    if name == "vllm":
+        from vlm_vllm import (
+            vlm_choose_action_with_logprobs,
+            MODEL_PATH,
+            MODEL_REVISION,
+        )
+
+        meta = {
+            "provider": "vllm_vlm",
+            "name": MODEL_PATH,
+            "revision": MODEL_REVISION,
+        }
+        return vlm_choose_action_with_logprobs, meta
+
     raise ValueError(f"Unknown backend: {name}")
