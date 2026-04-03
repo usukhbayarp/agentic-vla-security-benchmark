@@ -26,8 +26,8 @@ RUN apt-get update && apt-get install -y \
 
 COPY requirements.gpu.txt /app/requirements.gpu.txt
 
-RUN python3 -m pip install --upgrade pip setuptools wheel uv && \
-    python3 -m pip install -r /app/requirements.gpu.txt
+RUN python3 -m pip install --upgrade pip setuptools wheel && \
+    python3 -m pip install --break-system-packages -r /app/requirements.gpu.txt
 
 RUN python3 -m playwright install chromium --with-deps
 
@@ -35,8 +35,8 @@ RUN python3 -m playwright install chromium --with-deps
 RUN git clone --branch ${VLLM_REF} --depth 1 https://github.com/vllm-project/vllm.git /tmp/vllm && \
     cd /tmp/vllm && \
     python3 use_existing_torch.py && \
-    uv pip install --system -r requirements/build.txt && \
-    uv pip install --system --no-build-isolation -e . && \
+    python3 -m pip install --break-system-packages -r requirements/build.txt && \
+    python3 -m pip install --break-system-packages --no-build-isolation -e . && \
     rm -rf /tmp/vllm
 
 COPY . /app
