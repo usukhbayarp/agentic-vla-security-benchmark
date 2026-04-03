@@ -5,5 +5,4 @@ huggingface_hub==1.8.0
 tokenizers==0.22.2
 safetensors==0.7.0
 git+https://github.com/huggingface/transformers@8213e0d920d52cb00dcade16b6d1f6e952ac0a8c
-vllm==0.11.0
 qwen-vl-utils==0.0.14

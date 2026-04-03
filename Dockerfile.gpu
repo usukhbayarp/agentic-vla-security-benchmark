@@ -1,10 +1,18 @@
 FROM nvcr.io/nvidia/pytorch@sha256:417cbf33f87b5378849df37983552cd1f8bc8b62fe1ceabe004de816a55dff21
 
+ARG VLLM_REF=v0.11.0
+ARG TORCH_CUDA_ARCH_LIST=12.0+PTX
+ARG MAX_JOBS=8
+ARG NVCC_THREADS=2
+
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=1
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV OMP_NUM_THREADS=1
+ENV TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST}
+ENV MAX_JOBS=${MAX_JOBS}
+ENV NVCC_THREADS=${NVCC_THREADS}
 
 WORKDIR /app
 
@@ -12,17 +20,26 @@ RUN apt-get update && apt-get install -y \
     curl \
     git \
     ca-certificates \
+    build-essential \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.gpu.txt .
+COPY requirements.gpu.txt /app/requirements.gpu.txt
 
-RUN python3 -m pip install --upgrade pip setuptools wheel && \
-    python3 -m pip install -r requirements.gpu.txt
+RUN python3 -m pip install --upgrade pip setuptools wheel uv && \
+    python3 -m pip install -r /app/requirements.gpu.txt
 
 RUN python3 -m playwright install chromium --with-deps
 
-COPY . .
+# Build vLLM from source against the existing PyTorch installation.
+RUN git clone --branch ${VLLM_REF} --depth 1 https://github.com/vllm-project/vllm.git /tmp/vllm && \
+    cd /tmp/vllm && \
+    python3 use_existing_torch.py && \
+    uv pip install --system -r requirements/build.txt && \
+    uv pip install --system --no-build-isolation -e . && \
+    rm -rf /tmp/vllm
+
+COPY . /app
 RUN mkdir -p /app/runs
 
 CMD ["python3", "src/agent_sandbox.py", "--backend", "torch", "--mode", "dom"]

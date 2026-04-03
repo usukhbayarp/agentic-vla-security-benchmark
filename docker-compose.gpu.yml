@@ -17,6 +17,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.gpu
+      args:
+        VLLM_REF: v0.11.0
+        TORCH_CUDA_ARCH_LIST: "12.0+PTX"
+        MAX_JOBS: "8"
+        NVCC_THREADS: "2"
     restart: unless-stopped
     shm_size: "2gb"
     ipc: host
