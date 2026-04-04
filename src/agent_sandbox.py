@@ -27,7 +27,7 @@ def main():
     parser.add_argument("--mode", choices=["vision", "dom", "som"], default="vision")
     parser.add_argument(
         "--backend",
-        choices=["stub", "mlx", "torch"],
+        choices=["stub", "mlx", "torch", "vllm"],
         default="mlx",
         help="Model backend to use.",
     )
