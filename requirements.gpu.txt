@@ -1,7 +1,7 @@
 pillow==12.1.1
 playwright==1.52.0
 accelerate==1.13.0
-huggingface_hub==1.8.0
+huggingface_hub==0.36.0
 safetensors==0.7.0
-qwen-vl-utils==0.0.14
 transformers==4.56.1
+qwen-vl-utils==0.0.14
