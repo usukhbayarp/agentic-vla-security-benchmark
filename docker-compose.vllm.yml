@@ -1,3 +1,5 @@
+version: "3.9"
+
 services:
   ui:
     image: python:3.12-slim
@@ -14,32 +16,31 @@ services:
       - ./sandbox_ui:/srv:ro
 
   vllm:
-    image: vllm/vllm-openai:v0.12.0
+    build:
+      context: .
+      dockerfile: Dockerfile.vllm
+      args:
+        VLLM_REF: "v0.12.0"
+        TORCH_CUDA_ARCH_LIST: "12.1+PTX"
+        MAX_JOBS: "8"
+        NVCC_THREADS: "2"
     restart: unless-stopped
-    ipc: host
-    shm_size: "16gb"
     gpus: all
-    ports:
-      - "8001:8000"
+    shm_size: "16gb"
+    ipc: host
     environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - HF_HOME=/root/.cache/huggingface
-      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
-      - VLLM_ENABLE_CUDA_COMPATIBILITY=1
-    command: >
-      --model Qwen/Qwen3-VL-4B-Instruct
-      --served-model-name Qwen/Qwen3-VL-4B-Instruct
-      --revision ${QWEN_VL_REVISION:-ebb281ec70b05090aa6165b016eac8ec08e71b17}
-      --dtype bfloat16
-      --max-model-len 8192
-      --api-key token-abc123
-      --generation-config vllm
-      --gpu-memory-utilization 0.4
+      - VLLM_USE_TRITON_FLASH_ATTN=0
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/models')\""]
       interval: 20s
       timeout: 10s
       retries: 15
-      start_period: 60s
+      start_period: 120s
+    ports:
+      - "8000:8000"
     volumes:
       - ${HF_CACHE_DIR:-$HOME/.cache/huggingface}:/root/.cache/huggingface
 
@@ -61,7 +62,7 @@ services:
     environment:
       - TINYDESK_URL=http://ui:8080/tinydesk.html
       - QWEN_VL_MODEL=Qwen/Qwen3-VL-4B-Instruct
-      - QWEN_VL_REVISION=${QWEN_VL_REVISION:-ebb281ec70b05090aa6165b016eac8ec08e71b17}
+      - QWEN_VL_REVISION=ebb281ec70b05090aa6165b016eac8ec08e71b17
       - VLLM_BASE_URL=http://vllm:8000/v1
       - VLLM_API_KEY=token-abc123
       - VLLM_MODEL=Qwen/Qwen3-VL-4B-Instruct
