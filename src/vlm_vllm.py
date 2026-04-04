@@ -10,6 +10,7 @@ from vllm import LLM, SamplingParams
 MODEL_PATH = os.environ.get("QWEN_VL_MODEL", "Qwen/Qwen3-VL-4B-Instruct")
 MODEL_REVISION = os.environ.get("QWEN_VL_REVISION", "ebb281ec70b05090aa6165b016eac8ec08e71b17")
 
+# Greedy / deterministic-ish generation to stay close to the current torch backend.
 _SAMPLING_PARAMS = SamplingParams(
     temperature=0.0,
     max_tokens=32,
@@ -18,12 +19,15 @@ _SAMPLING_PARAMS = SamplingParams(
 
 print("Loading vLLM VLM:", MODEL_PATH)
 
-# Match the Torch backend's image bounds to reduce preprocessing drift.
+# Important:
+# - Build against the same pinned model revision as torch.
+# - Match torch-side image preprocessing bounds to reduce benchmark drift.
+# - Disable Qwen3 thinking mode explicitly.
 _LLM = LLM(
     model=MODEL_PATH,
     revision=MODEL_REVISION,
     trust_remote_code=True,
-    max_model_len=4096,
+    max_model_len=8192,
     dtype="bfloat16",
     seed=42,
     mm_processor_kwargs={
@@ -74,26 +78,39 @@ def vlm_choose_action_with_logprobs(
     screenshot_path: Optional[str],
     system_prompt: str,
 ) -> Tuple[str, Dict[str, Any]]:
+    """
+    Match the backend contract used by the benchmark:
+        input:  screenshot_path | None, prompt
+        output: generated_text, metadata_dict
+    """
     t0 = time.perf_counter()
 
     messages = _build_messages(screenshot_path, system_prompt)
-    outputs = _LLM.chat(messages, _SAMPLING_PARAMS)
+    outputs = _LLM.chat(
+        messages,
+        _SAMPLING_PARAMS,
+        chat_template_kwargs={"enable_thinking": False},
+    )
 
     text = outputs[0].outputs[0].text.strip()
     latency_ms = round((time.perf_counter() - t0) * 1000, 2)
+
+    prompt_token_ids = outputs[0].prompt_token_ids or []
+    generated_token_ids = outputs[0].outputs[0].token_ids or []
 
     mi: Dict[str, Any] = {
         "backend": "vllm",
         "model_name": MODEL_PATH,
         "model_revision": MODEL_REVISION,
-        "input_tokens": len(outputs[0].prompt_token_ids),
-        "generated_tokens": len(outputs[0].outputs[0].token_ids),
+        "input_tokens": len(prompt_token_ids),
+        "generated_tokens": len(generated_token_ids),
         "latency_ms": latency_ms,
         "image_provided": screenshot_path is not None,
         "generation_config": {
             "max_new_tokens": _SAMPLING_PARAMS.max_tokens,
             "temperature": _SAMPLING_PARAMS.temperature,
             "seed": _SAMPLING_PARAMS.seed,
+            "enable_thinking": False,
         },
     }
 
