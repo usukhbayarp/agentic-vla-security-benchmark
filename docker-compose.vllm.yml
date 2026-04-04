@@ -33,6 +33,7 @@ services:
       --max-model-len 8192
       --api-key token-abc123
       --generation-config vllm
+      --gpu-memory-utilization 0.4
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/models')\""]
       interval: 20s
