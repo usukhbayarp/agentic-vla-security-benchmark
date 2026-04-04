@@ -19,6 +19,7 @@ services:
       dockerfile: Dockerfile.gpu
       args:
         VLLM_REF: v0.11.0
+        TRANSFORMERS_REF: main
         TORCH_CUDA_ARCH_LIST: "12.0+PTX"
         MAX_JOBS: "4"
         NVCC_THREADS: "1"
