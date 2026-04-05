@@ -31,6 +31,7 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - HF_HOME=/root/.cache/huggingface
       - VLLM_USE_TRITON_FLASH_ATTN=0
+      - VLLM_GPU_MEMORY_UTILIZATION=0.25
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 20s
