@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import mimetypes
 import os
 import time
 import urllib.error
@@ -15,13 +16,17 @@ VLLM_MODEL = os.environ.get(
     "VLLM_MODEL",
     os.environ.get("QWEN_VL_MODEL", "Qwen/Qwen3-VL-4B-Instruct"),
 )
+# Informational only: revision is enforced server-side and recorded here for trace parity.
+VLLM_MODEL_REVISION = os.environ.get("QWEN_VL_REVISION") or None
 
 
 def _image_to_data_url(path: str) -> str:
     with open(path, "rb") as f:
         raw = f.read()
     b64 = base64.b64encode(raw).decode("utf-8")
-    return f"data:image/png;base64,{b64}"
+    mime, _ = mimetypes.guess_type(path)
+    mime = mime or "image/png"
+    return f"data:{mime};base64,{b64}"
 
 
 def _build_messages(
@@ -74,7 +79,7 @@ def vlm_choose_action_with_logprobs(
 ) -> Tuple[str, Dict[str, Any]]:
     """
     HTTP client backend for a separate vLLM server.
-    Matches the benchmark contract:
+    Contract:
       input:  screenshot_path | None, prompt
       output: generated_text, metadata_dict
     """
@@ -116,6 +121,7 @@ def vlm_choose_action_with_logprobs(
         mi: Dict[str, Any] = {
             "backend": "vllm_http",
             "model_name": VLLM_MODEL,
+            "model_revision": VLLM_MODEL_REVISION,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
@@ -130,6 +136,7 @@ def vlm_choose_action_with_logprobs(
                 "enable_thinking": False,
             },
             "server_base_url": VLLM_BASE_URL,
+            "http_status": 200,
             "error": None,
         }
 
@@ -145,8 +152,15 @@ def vlm_choose_action_with_logprobs(
         mi = {
             "backend": "vllm_http",
             "model_name": VLLM_MODEL,
+            "model_revision": VLLM_MODEL_REVISION,
+            "prompt_tokens": None,
+            "completion_tokens": None,
+            "total_tokens": None,
+            "input_tokens": None,
+            "generated_tokens": None,
             "latency_ms": latency_ms,
             "image_provided": screenshot_path is not None,
+            "generation_config": None,
             "server_base_url": VLLM_BASE_URL,
             "http_status": e.code,
             "error": f"HTTPError: {e.code} {e.reason}",
@@ -159,9 +173,17 @@ def vlm_choose_action_with_logprobs(
         mi = {
             "backend": "vllm_http",
             "model_name": VLLM_MODEL,
+            "model_revision": VLLM_MODEL_REVISION,
+            "prompt_tokens": None,
+            "completion_tokens": None,
+            "total_tokens": None,
+            "input_tokens": None,
+            "generated_tokens": None,
             "latency_ms": latency_ms,
             "image_provided": screenshot_path is not None,
+            "generation_config": None,
             "server_base_url": VLLM_BASE_URL,
+            "http_status": None,
             "error": f"URLError: {e}",
         }
         return "", mi
@@ -171,9 +193,17 @@ def vlm_choose_action_with_logprobs(
         mi = {
             "backend": "vllm_http",
             "model_name": VLLM_MODEL,
+            "model_revision": VLLM_MODEL_REVISION,
+            "prompt_tokens": None,
+            "completion_tokens": None,
+            "total_tokens": None,
+            "input_tokens": None,
+            "generated_tokens": None,
             "latency_ms": latency_ms,
             "image_provided": screenshot_path is not None,
+            "generation_config": None,
             "server_base_url": VLLM_BASE_URL,
+            "http_status": None,
             "error": f"{type(e).__name__}: {e}",
         }
         return "", mi

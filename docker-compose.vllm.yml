@@ -22,22 +22,26 @@ services:
         TORCH_CUDA_ARCH_LIST: "12.1+PTX"
         MAX_JOBS: "8"
         NVCC_THREADS: "2"
-    restart: unless-stopped
+    # Important on a shared GPU: do not auto-restart into OOM/restart loops.
+    restart: "no"
     gpus: all
     shm_size: "16gb"
     ipc: host
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - HF_HOME=/root/.cache/huggingface
-      - VLLM_USE_TRITON_FLASH_ATTN=0
       - VLLM_GPU_MEMORY_UTILIZATION=0.15
+      - VLLM_API_KEY=token-abc123
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      test:
+        [
+          "CMD-SHELL",
+          "python3 -c \"import urllib.request; req=urllib.request.Request('http://localhost:8000/v1/models', headers={'Authorization':'Bearer $VLLM_API_KEY'}); urllib.request.urlopen(req)\""
+        ]
       interval: 20s
       timeout: 10s
       retries: 15
       start_period: 120s
+    # Exposed for debugging from the host. Agent talks to vllm over the Docker network.
     ports:
       - "8001:8000"
     volumes:
@@ -47,7 +51,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.gpu
-    restart: unless-stopped
+    # This container is used for manual experiment runs, not as a long-lived service.
+    restart: "no"
     shm_size: "2gb"
     ipc: host
     ulimits:

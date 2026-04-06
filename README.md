@@ -105,8 +105,11 @@ agentic-vla-security-benchmark/
     som.py             # Set-of-Marks rendering
     browser_env.py     # Playwright environment helpers
     attacks.py         # Visual injection routing
-    vlm_mlx.py         # MLX-VLM interface
+    vlm_mlx.py         # MLX-VLM interface (local / Apple Silicon)
+    vlm_torch.py       # PyTorch + Transformers backend (GPU, in-process)
+    vlm_vllm_http.py   # vLLM HTTP client (GPU, separate server)
     vlm_stub.py        # Deterministic stub model for testing
+    vlm_backend.py     # Backend router
     utils.py
   runs/              # Generated traces (ignored by git)
   tests/             # Tests
@@ -157,16 +160,24 @@ This project supports two execution backends, serving different experimental goa
 This is the default configuration used when running `python src/agent_sandbox.py`
 locally and is fully specified by `requirements.txt`.
 
-### Hook-Enabled / GPU (Research Extension)
+### Torch backend / GPU (Research Extension)
 
-- **Runtime:** GPU (via Holistic AI compute)
-- **Model stack:** PyTorch + Hugging Face Transformers (e.g. Qwen3-VL)
+- **Runtime:** GPU (shared Spark server, GB10)
+- **Model stack:** PyTorch + Hugging Face Transformers (Qwen3-VL)
 - **Purpose:** Mechanistic interpretability with internal hooks
 - **Interpretability:** Attention maps, hidden states, cross-attention, activation patching
 
-The hook-enabled stack is **not required** to run the sandbox and is used only for
-advanced MI experiments. The sandbox and attack suite are designed to be largely backend-agnostic.
-Different model backends can be integrated by replacing the VLM interface.
+The Torch stack runs the model in-process inside the agent container, enabling direct weight access.
+
+### vLLM backend / GPU (Serving Mode)
+
+- **Runtime:** GPU (same shared server)
+- **Model stack:** vLLM (source-built for cc 12.1 / GB10), served via OpenAI-compatible HTTP API
+- **Purpose:** Clean backend comparison, faster inference serving
+- **Interpretability:** Output-level (token counts, latency); no internal hook access
+
+The vLLM stack runs the model in a dedicated server container; the agent communicates over HTTP.
+Both GPU backends are interchangeable from the agent's perspective via `--backend torch` / `--backend vllm`.
 
 ## Setup
 
@@ -358,95 +369,193 @@ pip install -r requirements-dev.txt
 pytest -q
 ```
 
-## Docker (Playwright GPU Runtime)
+## Docker Execution Modes
 
-This branch uses a simplified two-service Docker Compose setup:
+The benchmark supports two GPU execution modes, each with its own compose file.
+The browser (Playwright Chromium) runs directly inside the `agent` container in both modes.
 
-1. `agent`
-- Runs benchmark logic
-- Loads the model backend
-- Launches Playwright Chromium inside the same container
-- Produces traces under `runs/`
+---
 
-2. `ui`
-- Serves `sandbox_ui/` over HTTP
-- Exposes TinyDesk at `http://ui:8080/tinydesk.html`
+### Torch backend
 
-### Design
+Model runs in-process inside the agent container. Use when you need internal model access.
 
-This Playwright-based setup removes the old Selenium browser service.
-The browser now runs directly inside the `agent` container.
-
-This keeps the runtime simpler while preserving:
-- reproducible containerized execution
-- HTTP-served UI loading via `TINYDESK_URL`
-- support for `vision`, `dom`, and `som`
-- Torch and stub backends
-
-### Build
+#### Build
 
 ```bash
-docker compose -f docker-compose.gpu.yml build
+docker compose -f docker-compose.gpu.yml build agent
 ```
 
-### Start UI
+#### Start required services
 
 ```bash
 docker compose -f docker-compose.gpu.yml up -d ui
 ```
 
-### Run Experiments
-
-Stub (sanity check):
+#### Clean sanity checks
 
 ```bash
+# DOM
 docker compose -f docker-compose.gpu.yml run --rm agent \
-  python3 src/agent_sandbox.py --backend stub --mode dom
+  python3 src/agent_sandbox.py --backend torch --mode dom --attack none --script btn_reset btn_confirm
+
+# Vision
+docker compose -f docker-compose.gpu.yml run --rm agent \
+  python3 src/agent_sandbox.py --backend torch --mode vision --attack none --script btn_reset btn_confirm
+
+# SoM
+docker compose -f docker-compose.gpu.yml run --rm agent \
+  python3 src/agent_sandbox.py --backend torch --mode som --attack none --script btn_reset btn_confirm
 ```
 
-
-Torch (GPU) — main experiment:
+#### Example attacked runs
 
 ```bash
+# DOM
 docker compose -f docker-compose.gpu.yml run --rm agent \
-  python3 src/agent_sandbox.py --backend torch --mode dom
+  python3 src/agent_sandbox.py --backend torch --mode dom \
+  --attack visual_authority --variant manager_approval --start-step 0
+
+# Vision
+docker compose -f docker-compose.gpu.yml run --rm agent \
+  python3 src/agent_sandbox.py --backend torch --mode vision \
+  --attack visual_authority --variant manager_approval --start-step 0
+
+# SoM
+docker compose -f docker-compose.gpu.yml run --rm agent \
+  python3 src/agent_sandbox.py --backend torch --mode som \
+  --attack visual_authority --variant manager_approval --start-step 0
 ```
 
-A successful run saves a new directory under `runs/` containing `trace.json`
-and should show `executed_any: true` in the final trace summary.
-
-### Shutdown
+#### Stop
 
 ```bash
 docker compose -f docker-compose.gpu.yml down
 ```
 
-## Reproducibility
+---
 
-For this Playwright-based Docker runtime:
+### vLLM backend (HTTP)
 
-- dependency versions are pinned
-- the model revision is pinned
-- the UI is served via a dedicated ui container
-- the browser is installed inside the agent image through Playwright
-- traces record configuration, attack settings, and outputs for later analysis
+Model runs in a dedicated vLLM server container. Agent communicates via the OpenAI-compatible
+HTTP API (`src/vlm_vllm_http.py`). Use for backend comparison or cleaner serving.
+
+Services:
+
+- `ui` — serves TinyDesk
+- `vllm` — serves the model via OpenAI-compatible API on port 8000
+- `agent` — runs the benchmark, sends requests to `vllm`
+
+#### Build
+
+```bash
+docker compose -f docker-compose.vllm.yml build
+```
+
+#### Start services
+
+```bash
+docker compose -f docker-compose.vllm.yml up -d
+```
+
+#### Check service health
+
+```bash
+docker compose -f docker-compose.vllm.yml ps
+
+# Optional: verify the model server is responding
+docker compose -f docker-compose.vllm.yml exec vllm \
+  bash -lc 'python3 -c "import os, urllib.request; req=urllib.request.Request(\"http://localhost:8000/v1/models\", headers={\"Authorization\": f\"Bearer {os.environ[\"VLLM_API_KEY\"]}\"}); print(urllib.request.urlopen(req).read().decode()[:500])"'
+```
+
+#### Clean sanity checks
+
+```bash
+# DOM
+docker compose -f docker-compose.vllm.yml run --rm agent \
+  python3 src/agent_sandbox.py --backend vllm --mode dom --attack none --script btn_reset btn_confirm
+
+# Vision
+docker compose -f docker-compose.vllm.yml run --rm agent \
+  python3 src/agent_sandbox.py --backend vllm --mode vision --attack none --script btn_reset btn_confirm
+
+# SoM
+docker compose -f docker-compose.vllm.yml run --rm agent \
+  python3 src/agent_sandbox.py --backend vllm --mode som --attack none --script btn_reset btn_confirm
+```
+
+#### Example attacked runs
+
+```bash
+# DOM
+docker compose -f docker-compose.vllm.yml run --rm agent \
+  python3 src/agent_sandbox.py --backend vllm --mode dom \
+  --attack visual_authority --variant manager_approval --start-step 0
+
+# Vision
+docker compose -f docker-compose.vllm.yml run --rm agent \
+  python3 src/agent_sandbox.py --backend vllm --mode vision \
+  --attack visual_authority --variant manager_approval --start-step 0
+
+# SoM
+docker compose -f docker-compose.vllm.yml run --rm agent \
+  python3 src/agent_sandbox.py --backend vllm --mode som \
+  --attack visual_authority --variant manager_approval --start-step 0
+```
+
+#### Stop vLLM only (shared GPU)
+
+On a shared machine, stop only the model server to free GPU memory without tearing down the full stack:
+
+```bash
+docker compose -f docker-compose.vllm.yml stop vllm
+```
+
+#### Stop full stack
+
+```bash
+docker compose -f docker-compose.vllm.yml down --remove-orphans
+```
+
+---
+
+## Reproducibility Notes
+
+- **Model:** `Qwen/Qwen3-VL-4B-Instruct`
+- **Model revision:** `ebb281ec70b05090aa6165b016eac8ec08e71b17`
+- vLLM image is source-built from a pinned NGC PyTorch base (`nvcr.io/nvidia/pytorch@sha256:417c…`)
+- vLLM source ref pinned at build time (`VLLM_REF=v0.12.0`)
+- Exact vLLM commit is recorded inside the image at build time:
+  - `/vllm_commit.txt`
+  - `/vllm_meta.env`
+- Traces record: backend, model name, model revision, token counts, latency, image-provided flag, server base URL
 
 ### Optional Environment Variables
 
-You can configure cache location and model revision:
-
 ```bash
 export HF_CACHE_DIR="$HOME/.cache/huggingface"
-# Default pinned model revision (used in experiments). If not overridden, the default revision defined in the repository is used.
-export QWEN_VL_REVISION=ebb281ec70b05090aa6165b016eac8ec08e71b17
 ```
 
-Alternatively, create a `.env` file:
+Or create a `.env` file:
 
 ```dotenv
-# Replace `/absolute/path/to/.cache/huggingface` with your local Hugging Face cache path.
 HF_CACHE_DIR=/absolute/path/to/.cache/huggingface
-QWEN_VL_REVISION=ebb281ec70b05090aa6165b016eac8ec08e71b17
 ```
 
 Docker Compose will automatically pick these up.
+
+---
+
+## Shared GPU Operational Note
+
+On shared GPU infrastructure, vLLM startup may fail under high memory pressure even with a low
+`VLLM_GPU_MEMORY_UTILIZATION`. Once started, it is stable.
+
+Recommended workflow:
+- start the vLLM stack during a lower-load window
+- keep the server running for the full experiment session
+- do not rely on automatic restarts
+- run only one heavyweight backend at a time
+
+Both `vllm` and `agent` services use `restart: "no"` in `docker-compose.vllm.yml` to avoid
+restart loops on OOM. `VLLM_GPU_MEMORY_UTILIZATION` is configurable via the compose environment.
