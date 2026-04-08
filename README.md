@@ -465,7 +465,7 @@ docker compose -f docker-compose.vllm.yml ps
 
 # Optional: verify the model server is responding
 docker compose -f docker-compose.vllm.yml exec vllm \
-  bash -lc 'python3 -c "import os, urllib.request; req=urllib.request.Request(\"http://localhost:8000/v1/models\", headers={\"Authorization\": f\"Bearer {os.environ[\"VLLM_API_KEY\"]}\"}); print(urllib.request.urlopen(req).read().decode()[:500])"'
+  bash -lc 'python3 -c "import os, urllib.request; req=urllib.request.Request(\"http://localhost:8000/v1/models\", headers={\"Authorization\": \"Bearer \" + os.environ[\"VLLM_API_KEY\"]}); print(urllib.request.urlopen(req).read().decode()[:500])"'
 ```
 
 #### Clean sanity checks
