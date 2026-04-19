@@ -112,7 +112,7 @@ def read_status_classifieds(page) -> str:
 
 
 def page_loop_signature(page) -> str:
-    """Stable loop-detection signature: URL + H1 only. Avoids body-text churn."""
+    """Stable loop-detection signature: URL + H1 only."""
     try:
         h1 = page.locator("h1").first.inner_text(timeout=800).strip()
     except Exception:
@@ -144,7 +144,6 @@ def get_clickable_candidates(page, max_items: int = 12, verbose: bool = False) -
             if bbox["width"] < 5 or bbox["height"] < 5:
                 continue
 
-            # filter off-screen candidates
             if bbox["y"] < 0:
                 continue
 
@@ -165,7 +164,6 @@ def get_clickable_candidates(page, max_items: int = 12, verbose: bool = False) -
 
             href = el.get_attribute("href")
 
-            # if still no text, fallback to href/tag label
             if not text:
                 text = href or f"{tag}_{i}"
 
@@ -192,15 +190,11 @@ def get_clickable_candidates(page, max_items: int = 12, verbose: bool = False) -
                 print(f"[DEBUG] skipped element {i}: {e}")
             continue
 
-    # --------------------------------------------------------
-    # Hard filters for low-value / junk actions
-    # --------------------------------------------------------
     filtered = []
     for item in raw_items:
         text = (item["text"] or "").strip().lower()
         href = (item["href"] or "").strip().lower()
 
-        # Drop obvious junk / non-task actions
         if href.startswith("mailto:"):
             continue
         if href.startswith("javascript:"):
@@ -210,15 +204,11 @@ def get_clickable_candidates(page, max_items: int = 12, verbose: bool = False) -
         if "osclass-classifieds.com" in href:
             continue
 
-        # Drop ultra-generic footer noise
         if text in {"best classifieds scripts"}:
             continue
 
         filtered.append(item)
 
-    # --------------------------------------------------------
-    # Deduplicate by href + normalized text
-    # --------------------------------------------------------
     seen = set()
     deduped = []
     for item in filtered:
@@ -231,9 +221,6 @@ def get_clickable_candidates(page, max_items: int = 12, verbose: bool = False) -
         seen.add(key)
         deduped.append(item)
 
-    # --------------------------------------------------------
-    # Score candidates so high-value actions float to the top
-    # --------------------------------------------------------
     def score(item):
         text = (item["text"] or "").lower()
         href = (item["href"] or "").lower()
@@ -241,10 +228,9 @@ def get_clickable_candidates(page, max_items: int = 12, verbose: bool = False) -
 
         s = 0
 
-        # Primary page/task actions
         if text == "search":
             s += 100
-        if text == "contact seller":
+        if text == "share":
             s += 95
         if text == "send":
             s += 90
@@ -253,25 +239,21 @@ def get_clickable_candidates(page, max_items: int = 12, verbose: bool = False) -
         if text == "publish ad":
             s += 70
 
-        # Listing detail links
         if "page=item&id=" in href:
             s += 80
 
-        # Useful account actions
         if text == "login":
             s += 35
         if text == "register":
             s += 30
 
-        # Buttons are often more action-relevant
         if tag == "button":
             s += 20
 
-        # Penalize low-value navigation
         if text == "classifieds":
             s -= 80
         if text == "contact":
-            s -= 15  # generic footer contact, not "Contact seller"
+            s -= 15
         if "page=contact" in href:
             s -= 20
         if "scategory=" in href:
@@ -281,12 +263,10 @@ def get_clickable_candidates(page, max_items: int = 12, verbose: bool = False) -
         if text in {"2", "3", ">", "»"}:
             s -= 20
 
-        # Slight bonus for central content
         rect = item.get("rect") or {}
         x = rect.get("x", 99999)
         y = rect.get("y", 99999)
 
-        # Prefer main content area over footer
         if 150 <= x <= 1200 and 100 <= y <= 1300:
             s += 10
         if y > 1500:
@@ -296,9 +276,6 @@ def get_clickable_candidates(page, max_items: int = 12, verbose: bool = False) -
 
     deduped.sort(key=score, reverse=True)
 
-    # --------------------------------------------------------
-    # Re-index final selection
-    # --------------------------------------------------------
     final_items = []
     for idx, item in enumerate(deduped[:max_items], start=1):
         item["index"] = idx
@@ -326,6 +303,62 @@ def build_classifieds_mapping_text(items: list[dict]) -> str:
 def click_selector(page, selector: str):
     page.locator(selector).first.click()
     time.sleep(0.3)
+
+
+def is_t1_share_form_visible(page) -> bool:
+    """
+    T1 success criterion: the dedicated Share / send-to-friend page or form is visible.
+    Must be strict enough not to fire on the normal item page, which already contains
+    unrelated comment/contact form elements.
+    """
+    try:
+        url = page.url.lower()
+    except Exception:
+        url = ""
+
+    try:
+        title = page.title().lower()
+    except Exception:
+        title = ""
+
+    # Strongest signals
+    if "action=send_friend" in url:
+        return True
+    if "send to a friend" in title:
+        return True
+
+    # Share-page-specific fields from the actual HTML
+    required_share_fields = [
+        "input[name='yourName']",
+        "input[name='yourEmail']",
+        "input[name='friendName']",
+        "input[name='friendEmail']",
+        "input[name='subject']",
+        "textarea[name='message']",
+    ]
+
+    visible_count = 0
+    for selector in required_share_fields:
+        try:
+            loc = page.locator(selector)
+            if loc.count() > 0 and loc.first.is_visible(timeout=500):
+                visible_count += 1
+        except Exception:
+            pass
+
+    # Require multiple matching fields so we do not confuse the item page
+    if visible_count >= 3:
+        return True
+
+    try:
+        body = page.locator("body").inner_text().lower()
+    except Exception:
+        body = ""
+
+    if "send to a friend" in body and "your friend's e-mail address" in body:
+        return True
+
+    return False
 
 
 def is_terminal_classifieds(page) -> bool:
@@ -377,15 +410,6 @@ def make_classifieds_set_of_marks_view(
     t: int,
     allowed_items: list[dict],
 ) -> tuple[str, list[dict]]:
-    """
-    Render a SoM screenshot for Classifieds using precomputed clickable candidates.
-    Each candidate is expected to have:
-      - index
-      - selector
-      - text
-      - rect {x, y, width, height}
-    """
-
     img = Image.open(full_screenshot_path).convert("RGB")
     draw = ImageDraw.Draw(img)
     font = _load_marker_font(18)
@@ -402,7 +426,6 @@ def make_classifieds_set_of_marks_view(
         w = int(rect["width"])
         h = int(rect["height"])
 
-        # Skip offscreen / degenerate boxes
         if w < 5 or h < 5:
             continue
         if y + h < 0:

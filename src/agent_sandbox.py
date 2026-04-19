@@ -29,6 +29,7 @@ from browser_env_classifieds import (
     snap_action_highlight as snap_action_highlight_classifieds,
     read_status_classifieds,
     is_terminal_classifieds,
+    is_t1_share_form_visible,
     allowed_actions_classifieds,
     click_selector,
     build_classifieds_mapping_text,
@@ -39,11 +40,8 @@ from browser_env_classifieds import (
 from attacks import apply_attack_if_needed
 from vlm_backend import load_backend
 
+
 def _page_signature(status_text: str) -> str:
-    """
-    Lightweight stable page signature used for loop detection.
-    Uses the already-logged status summary.
-    """
     if not status_text:
         return ""
     return status_text.strip()
@@ -70,6 +68,7 @@ def _json_safe_allowed_actions(allowed):
         return sorted(allowed)
     return allowed
 
+
 def main():
     parser = argparse.ArgumentParser()
 
@@ -83,6 +82,12 @@ def main():
     )
     parser.add_argument("--script", nargs="*", default=None)
     parser.add_argument("--status-in-prompt", action="store_true")
+    parser.add_argument(
+        "--prompt-variant",
+        choices=["clean", "defensive"],
+        default="clean",
+        help="Classifieds prompt variant: 'clean' (no defense priors) or 'defensive'.",
+    )
 
     parser.add_argument(
         "--attack",
@@ -133,7 +138,10 @@ def main():
         "model": dict(backend_meta),
         "mode": args.mode,
         "attack": dict(attack_config),
-        "defense": {"enabled": False, "name": None},
+        "defense": {
+            "enabled": args.prompt_variant == "defensive",
+            "name": args.prompt_variant if args.prompt_variant != "clean" else None,
+        },
         "max_steps": 6,
         "ui": ui_meta,
     }
@@ -143,7 +151,7 @@ def main():
     else:
         page, browser, pw = make_page_classifieds()
 
-    base_prompt = build_base_prompt(args.mode, env=args.env)
+    base_prompt = build_base_prompt(args.mode, env=args.env, variant=args.prompt_variant)
 
     trace = {
         "config": run_config,
@@ -160,12 +168,14 @@ def main():
         executed_any = False
         error = None
         violation = False
+        task_outcome = None
         prev_page_sig = None
         prev_selector_executed = None
 
         for t in range(run_config["max_steps"]):
             assets_used = None
             plain_screenshot_path = None
+
             if args.env == "tinydesk":
                 assets_used = apply_attack_if_needed(page, project_root, attack_config, t)
 
@@ -177,6 +187,7 @@ def main():
                 status_before = read_status_classifieds(page)
                 allowed = allowed_actions_classifieds(page)
                 current_page_sig = page_loop_signature(page)
+
             screenshot_path = None
             dom_screenshot_path = None
             action_highlight_path = None
@@ -354,9 +365,6 @@ def main():
                     violation = True
             else:
                 status_after = read_status_classifieds(page)
-                # TODO: define violation criteria for Classifieds once attack
-                # scenarios are designed; leave as None until then so traces
-                # are not silently wrong.
                 violation = None
 
             if "generation_config" in mi and "generation_config" not in trace["config"]["model"]:
@@ -387,18 +395,29 @@ def main():
             if executed:
                 prev_selector_executed = click_id if args.env == "tinydesk" else click_selector_value
                 prev_page_sig = current_page_sig
-            
+                if args.env == "classifieds" and is_t1_share_form_visible(page):
+                    task_outcome = "t1_success"
+                    break
+
             if step_error == "repeat_action_same_page":
+                if task_outcome is None:
+                    task_outcome = "loop_stopped"
                 break
-            
+
             if (args.env == "tinydesk" and is_terminal(status_after)) or (
                 args.env == "classifieds" and is_terminal_classifieds(page)
             ):
+                if args.env == "classifieds" and task_outcome is None:
+                    task_outcome = "t1_terminal"
                 break
+
+        if args.env == "classifieds" and task_outcome is None:
+            task_outcome = "step_budget_exhausted"
 
         trace["final"] = {
             "executed_any": executed_any,
             "violation": violation,
+            "task_outcome": task_outcome,
             "error": error,
             "final_status": read_status(page) if args.env == "tinydesk" else read_status_classifieds(page),
         }
