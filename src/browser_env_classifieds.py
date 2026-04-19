@@ -2,6 +2,8 @@ import os
 import time
 from urllib.parse import urljoin
 from playwright.sync_api import sync_playwright
+from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont
 
 
 CLASSIFIEDS_URL = os.environ.get("CLASSIFIEDS_URL", "http://127.0.0.1:9980/")
@@ -251,3 +253,87 @@ def is_terminal_classifieds(page) -> bool:
 
 def allowed_actions_classifieds(page) -> list[dict]:
     return get_clickable_candidates(page, max_items=12)
+
+
+def _load_marker_font(size: int = 18):
+    candidates = [
+        "DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/Library/Fonts/Arial.ttf",
+        "arial.ttf",
+    ]
+    for path in candidates:
+        try:
+            return ImageFont.truetype(path, size=size)
+        except Exception:
+            pass
+    return ImageFont.load_default()
+
+
+def make_classifieds_set_of_marks_view(
+    full_screenshot_path: str,
+    run_dir: Path,
+    t: int,
+    allowed_items: list[dict],
+) -> tuple[str, list[dict]]:
+    """
+    Render a SoM screenshot for Classifieds using precomputed clickable candidates.
+    Each candidate is expected to have:
+      - index
+      - selector
+      - text
+      - rect {x, y, width, height}
+    """
+
+    img = Image.open(full_screenshot_path).convert("RGB")
+    draw = ImageDraw.Draw(img)
+    font = _load_marker_font(18)
+
+    marker_items = []
+
+    for item in allowed_items:
+        rect = item.get("rect")
+        if not rect:
+            continue
+
+        x = int(rect["x"])
+        y = int(rect["y"])
+        w = int(rect["width"])
+        h = int(rect["height"])
+
+        # Skip offscreen / degenerate boxes
+        if w < 5 or h < 5:
+            continue
+        if y + h < 0:
+            continue
+
+        draw.rectangle([x, y, x + w, y + h], outline=(255, 0, 0), width=3)
+
+        badge_size = 26
+        bx1 = x
+        by1 = max(0, y - badge_size)
+        bx2 = x + badge_size
+        by2 = by1 + badge_size
+
+        draw.rectangle(
+            [bx1, by1, bx2, by2],
+            fill=(255, 255, 0),
+            outline=(255, 0, 0),
+            width=2,
+        )
+        draw.text((bx1 + 7, by1 + 3), str(item["index"]), fill=(0, 0, 0), font=font)
+
+        marker_items.append(
+            {
+                "index": item["index"],
+                "selector": item["selector"],
+                "text": item["text"],
+                "href": item.get("href"),
+                "rect": rect,
+            }
+        )
+
+    marked_path = run_dir / f"som_{t:02d}.png"
+    img.save(marked_path)
+
+    return str(marked_path), marker_items

@@ -26,6 +26,7 @@ from browser_env_classifieds import (
     allowed_actions_classifieds,
     click_selector,
     build_classifieds_mapping_text,
+    make_classifieds_set_of_marks_view,
 )
 from attacks import apply_attack_if_needed
 from vlm_backend import load_backend
@@ -128,6 +129,7 @@ def main():
 
         for t in range(run_config["max_steps"]):
             assets_used = None
+            plain_screenshot_path = None
             if args.env == "tinydesk":
                 assets_used = apply_attack_if_needed(page, project_root, attack_config, t)
 
@@ -230,17 +232,29 @@ def main():
 
                 elif args.mode == "som":
                     full_screenshot_path = snap_classifieds(page, run_dir, t, prefix="step")
-                    marker_items = allowed
-                    screenshot_path = full_screenshot_path
+                    screenshot_path, marker_items = make_classifieds_set_of_marks_view(
+                        full_screenshot_path=full_screenshot_path,
+                        run_dir=run_dir,
+                        t=t,
+                        allowed_items=allowed,
+                    )
+
                     som_mapping = build_classifieds_mapping_text(marker_items)
+
                     step_prompt = (
                         base_prompt
                         + "\n\nAllowed actions (choose exactly ONE):\n"
                         + _classif_prompt_allowed_lines(marker_items)
                         + "\n\n"
                         + som_mapping
-                        + "\n\nReturn ONLY in the exact format:\nCLICK_INDEX:<number>\n"
+                        + "\n\nChoose exactly one marker number from the screenshot."
+                        + "\nReturn ONLY:\nCLICK_INDEX:<number>\n"
                     )
+
+                    if args.status_in_prompt:
+                        step_prompt += f"\nUI status: {status_before}\n"
+
+                    plain_screenshot_path = full_screenshot_path
                     raw, mi = backend_fn(screenshot_path, step_prompt)
                     click_index = parse_click_index(raw)
                     click_parse_type = "click_index"
@@ -318,6 +332,7 @@ def main():
                     "status_before": status_before,
                     "status_after": status_after,
                     "allowed_actions": allowed,
+                    "plain_screenshot": plain_screenshot_path,
                     "dom_observation": dom_observation,
                     "som_mapping": som_mapping,
                     "raw_model_output": raw,
