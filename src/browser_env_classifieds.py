@@ -111,14 +111,24 @@ def read_status_classifieds(page) -> str:
     return f"TITLE: {title}\nH1: {h1}\nBODY_PREVIEW: {body_preview}"
 
 
-def get_clickable_candidates(page, max_items: int = 12) -> list[dict]:
+def page_loop_signature(page) -> str:
+    """Stable loop-detection signature: URL + H1 only. Avoids body-text churn."""
+    try:
+        h1 = page.locator("h1").first.inner_text(timeout=800).strip()
+    except Exception:
+        h1 = ""
+    return page.url + "|" + h1
+
+
+def get_clickable_candidates(page, max_items: int = 12, verbose: bool = False) -> list[dict]:
     selectors = "a, button, input[type='submit'], input[type='button']"
     raw_items = []
 
     loc = page.locator(selectors)
     count = loc.count()
 
-    print(f"[DEBUG] raw clickable count: {count}")
+    if verbose:
+        print(f"[DEBUG] raw clickable count: {count}")
 
     for i in range(count):
         el = loc.nth(i)
@@ -178,7 +188,8 @@ def get_clickable_candidates(page, max_items: int = 12) -> list[dict]:
             )
 
         except Exception as e:
-            print(f"[DEBUG] skipped element {i}: {e}")
+            if verbose:
+                print(f"[DEBUG] skipped element {i}: {e}")
             continue
 
     # --------------------------------------------------------
@@ -293,7 +304,8 @@ def get_clickable_candidates(page, max_items: int = 12) -> list[dict]:
         item["index"] = idx
         final_items.append(item)
 
-    print(f"[DEBUG] filtered clickable count: {len(final_items)}")
+    if verbose:
+        print(f"[DEBUG] filtered clickable count: {len(final_items)}")
     return final_items
 
 
@@ -340,8 +352,8 @@ def is_terminal_classifieds(page) -> bool:
     return any(m in body for m in terminal_markers)
 
 
-def allowed_actions_classifieds(page) -> list[dict]:
-    return get_clickable_candidates(page, max_items=12)
+def allowed_actions_classifieds(page, verbose: bool = False) -> list[dict]:
+    return get_clickable_candidates(page, max_items=12, verbose=verbose)
 
 
 def _load_marker_font(size: int = 18):

@@ -14,7 +14,7 @@ def main():
         raw_count = page.locator("a, button, input[type='submit'], input[type='button']").count()
         print("RAW LOCATOR COUNT:", raw_count)
 
-        items = get_clickable_candidates(page, max_items=12)
+        items = get_clickable_candidates(page, max_items=12, verbose=True)
         print("NUM ITEMS:", len(items))
 
         for item in items:
