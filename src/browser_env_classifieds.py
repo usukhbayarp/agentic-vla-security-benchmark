@@ -128,7 +128,14 @@ def get_clickable_candidates(page, max_items: int = 12) -> list[dict]:
                 continue
 
             bbox = el.bounding_box()
-            if bbox is None or bbox["width"] < 5 or bbox["height"] < 5:
+            if bbox is None:
+                continue
+
+            if bbox["width"] < 5 or bbox["height"] < 5:
+                continue
+
+            # filter off-screen candidates
+            if bbox["y"] < 0:
                 continue
 
             tag = el.evaluate("el => el.tagName.toLowerCase()")
@@ -145,7 +152,10 @@ def get_clickable_candidates(page, max_items: int = 12) -> list[dict]:
                 text = el.get_attribute("title") or ""
             if not text:
                 text = el.get_attribute("value") or ""
+
             href = el.get_attribute("href")
+
+            # if still no text, fallback to href/tag label
             if not text:
                 text = href or f"{tag}_{i}"
 
@@ -171,41 +181,120 @@ def get_clickable_candidates(page, max_items: int = 12) -> list[dict]:
             print(f"[DEBUG] skipped element {i}: {e}")
             continue
 
-    # Deduplicate by href+text
+    # --------------------------------------------------------
+    # Hard filters for low-value / junk actions
+    # --------------------------------------------------------
+    filtered = []
+    for item in raw_items:
+        text = (item["text"] or "").strip().lower()
+        href = (item["href"] or "").strip().lower()
+
+        # Drop obvious junk / non-task actions
+        if href.startswith("mailto:"):
+            continue
+        if href.startswith("javascript:"):
+            continue
+        if "/oc-content/uploads/" in href:
+            continue
+        if "osclass-classifieds.com" in href:
+            continue
+
+        # Drop ultra-generic footer noise
+        if text in {"best classifieds scripts"}:
+            continue
+
+        filtered.append(item)
+
+    # --------------------------------------------------------
+    # Deduplicate by href + normalized text
+    # --------------------------------------------------------
     seen = set()
     deduped = []
-    for item in raw_items:
-        key = ((item["href"] or "").strip(), item["text"].strip().lower())
+    for item in filtered:
+        key = (
+            (item["href"] or "").strip(),
+            " ".join((item["text"] or "").lower().split()),
+        )
         if key in seen:
             continue
         seen.add(key)
         deduped.append(item)
 
+    # --------------------------------------------------------
+    # Score candidates so high-value actions float to the top
+    # --------------------------------------------------------
     def score(item):
-        text = item["text"].lower()
+        text = (item["text"] or "").lower()
         href = (item["href"] or "").lower()
+        tag = item["tag"]
 
         s = 0
-        if "publish ad" in text: s += 50
-        if "login" in text: s += 40
-        if "register" in text: s += 30
-        if item["tag"] == "button": s += 20
-        if "page=item&id=" in href: s += 25
-        if "search" in text: s += 15
-        if text == "classifieds": s -= 50
-        if "category" in href or "scategory" in href: s -= 10
-        return -s  # lower sorts first
 
-    deduped.sort(key=score)
-    deduped = deduped[:max_items]
+        # Primary page/task actions
+        if text == "search":
+            s += 100
+        if text == "contact seller":
+            s += 95
+        if text == "send":
+            s += 90
+        if text == "publish":
+            s += 85
+        if text == "publish ad":
+            s += 70
 
-    items = []
-    for idx, item in enumerate(deduped, start=1):
+        # Listing detail links
+        if "page=item&id=" in href:
+            s += 80
+
+        # Useful account actions
+        if text == "login":
+            s += 35
+        if text == "register":
+            s += 30
+
+        # Buttons are often more action-relevant
+        if tag == "button":
+            s += 20
+
+        # Penalize low-value navigation
+        if text == "classifieds":
+            s -= 80
+        if text == "contact":
+            s -= 15  # generic footer contact, not "Contact seller"
+        if "page=contact" in href:
+            s -= 20
+        if "scategory=" in href:
+            s -= 10
+        if "sregion=" in href:
+            s -= 15
+        if text in {"2", "3", ">", "»"}:
+            s -= 20
+
+        # Slight bonus for central content
+        rect = item.get("rect") or {}
+        x = rect.get("x", 99999)
+        y = rect.get("y", 99999)
+
+        # Prefer main content area over footer
+        if 150 <= x <= 1200 and 100 <= y <= 1300:
+            s += 10
+        if y > 1500:
+            s -= 15
+
+        return s
+
+    deduped.sort(key=score, reverse=True)
+
+    # --------------------------------------------------------
+    # Re-index final selection
+    # --------------------------------------------------------
+    final_items = []
+    for idx, item in enumerate(deduped[:max_items], start=1):
         item["index"] = idx
-        items.append(item)
+        final_items.append(item)
 
-    print(f"[DEBUG] filtered clickable count: {len(items)}")
-    return items
+    print(f"[DEBUG] filtered clickable count: {len(final_items)}")
+    return final_items
 
 
 def build_classifieds_mapping_text(items: list[dict]) -> str:
