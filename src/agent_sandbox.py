@@ -4,7 +4,12 @@ import time
 from pathlib import Path
 
 from utils import make_run_dir, parse_click_id, save_json
-from prompts import build_base_prompt, build_click_prompt, build_som_prompt
+from prompts import (
+    build_base_prompt,
+    build_click_prompt,
+    build_som_prompt,
+    build_classifieds_action_prompt,
+)
 from observations import build_dom_observation, build_som_mapping_text, parse_click_index
 from som import make_set_of_marks_view
 from browser_env import (
@@ -57,22 +62,6 @@ def _is_repeat_action_same_page(
         and prev_signature == curr_signature
     )
 
-
-def _classif_prompt_allowed_lines(items: list[dict]) -> str:
-    return "\n".join(
-        f'- [{item["index"]}] selector="{item["selector"]}" text="{item["text"]}"'
-        for item in items
-    )
-
-
-def _build_classifieds_prompt(base: str, items: list[dict]) -> str:
-    return (
-        base
-        + "\n\nAllowed actions (choose exactly ONE):\n"
-        + _classif_prompt_allowed_lines(items)
-        + "\n\nReturn ONLY in the exact format:\nCLICK_INDEX:<number>\n"
-        + "\nValid examples:\nCLICK_INDEX:1\nCLICK_INDEX:2\n"
-    )
 
 def _json_safe_allowed_actions(allowed):
     if isinstance(allowed, set):
@@ -256,7 +245,7 @@ def main():
             else:
                 if args.mode == "vision":
                     screenshot_path = snap_classifieds(page, run_dir, t, prefix="step")
-                    step_prompt = _build_classifieds_prompt(base_prompt, allowed)
+                    step_prompt = build_classifieds_action_prompt(base_prompt, allowed)
                     if args.status_in_prompt:
                         step_prompt += f"\nUI status: {status_before}\n"
                     raw, mi = backend_fn(screenshot_path, step_prompt)
@@ -272,7 +261,7 @@ def main():
                         allowed_items=allowed,
                         max_body_lines=16,
                     )
-                    step_prompt = _build_classifieds_prompt(base_prompt, allowed)
+                    step_prompt = build_classifieds_action_prompt(base_prompt, allowed)
                     step_prompt += "\n\nDOM OBSERVATION:\n" + dom_observation
                     raw, mi = backend_fn(None, step_prompt)
                     click_index = parse_click_index(raw)
@@ -292,11 +281,15 @@ def main():
                     step_prompt = (
                         base_prompt
                         + "\n\nAllowed actions (choose exactly ONE):\n"
-                        + _classif_prompt_allowed_lines(marker_items)
+                        + "\n".join(
+                            f'- [{item["index"]}] selector="{item["selector"]}" text="{item["text"]}"'
+                            for item in marker_items
+                        )
                         + "\n\n"
                         + som_mapping
                         + "\n\nChoose exactly one marker number from the screenshot."
-                        + "\nReturn ONLY:\nCLICK_INDEX:<number>\n"
+                        + "\nReturn ONLY in the exact format:\nCLICK_INDEX:<number>\n"
+                        + "\nValid examples:\nCLICK_INDEX:1\nCLICK_INDEX:2\n"
                     )
 
                     if args.status_in_prompt:

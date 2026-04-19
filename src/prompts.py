@@ -127,7 +127,12 @@ def build_som_prompt(base: str, allowed: Iterable[str], som_mapping: str) -> str
     )
 
 
-def build_classifieds_action_prompt(base: str, action_lines: list[str]) -> str:
+def build_classifieds_action_prompt(base: str, items: list[dict]) -> str:
+    action_lines = [
+        f'- [{item["index"]}] selector="{item["selector"]}" text="{item["text"]}"'
+        for item in items
+    ]
+
     return (
         base
         + "\n\nAllowed actions (choose exactly ONE):\n"
