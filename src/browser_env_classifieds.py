@@ -109,37 +109,58 @@ def read_status_classifieds(page) -> str:
     return f"TITLE: {title}\nH1: {h1}\nBODY_PREVIEW: {body_preview}"
 
 
-def get_clickable_candidates(page, max_items: int = 12) -> list[dict]:
+def get_clickable_candidates(page, max_items: int = 20) -> list[dict]:
     selectors = "a, button, input[type='submit'], input[type='button']"
     items = []
 
-    for idx, el in enumerate(page.locator(selectors).all(), start=1):
+    loc = page.locator(selectors)
+    count = loc.count()
+
+    print(f"[DEBUG] raw clickable count: {count}")
+
+    for i in range(count):
         if len(items) >= max_items:
             break
+
+        el = loc.nth(i)
 
         try:
             if not el.is_visible():
                 continue
 
-            text = el.inner_text().strip()
-            if not text:
-                text = el.get_attribute("value") or ""
-
-            href = el.get_attribute("href")
-            tag = el.evaluate("el => el.tagName.toLowerCase()")
             bbox = el.bounding_box()
             if bbox is None:
                 continue
 
-            selector = page.evaluate(
-                """(el) => {
-                    if (el.id) return `#${el.id}`;
-                    const tag = el.tagName.toLowerCase();
-                    const cls = (el.className || "").toString().trim().split(/\\s+/).filter(Boolean).slice(0, 2).join(".");
-                    if (cls) return `${tag}.${cls}`;
-                    return tag;
+            if bbox["width"] < 5 or bbox["height"] < 5:
+                continue
+
+            tag = el.evaluate("el => el.tagName.toLowerCase()")
+
+            text = ""
+            try:
+                text = el.inner_text().strip()
+            except Exception:
+                pass
+
+            if not text:
+                text = el.get_attribute("aria-label") or ""
+            if not text:
+                text = el.get_attribute("title") or ""
+            if not text:
+                text = el.get_attribute("value") or ""
+            if not text:
+                text = el.get_attribute("href") or f"{tag}_{i}"
+
+            href = el.get_attribute("href")
+
+            # evaluate on the locator itself
+            selector = el.evaluate(
+                """(node, idx) => {
+                    node.setAttribute("data-vla-temp-index", String(idx));
+                    return `[data-vla-temp-index="${idx}"]`;
                 }""",
-                el,
+                i,
             )
 
             items.append(
@@ -152,9 +173,12 @@ def get_clickable_candidates(page, max_items: int = 12) -> list[dict]:
                     "rect": bbox,
                 }
             )
-        except Exception:
+
+        except Exception as e:
+            print(f"[DEBUG] skipped element {i}: {e}")
             continue
 
+    print(f"[DEBUG] filtered clickable count: {len(items)}")
     return items
 
 
