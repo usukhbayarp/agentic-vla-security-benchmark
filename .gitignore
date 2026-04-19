@@ -26,3 +26,5 @@ sandbox_ui/assets/injection.png
 sandbox_ui/assets/injection.png
 sandbox_ui/assets/injection_confirm.png
 .env
+*.png
+*.tar.gz
