@@ -109,9 +109,9 @@ def read_status_classifieds(page) -> str:
     return f"TITLE: {title}\nH1: {h1}\nBODY_PREVIEW: {body_preview}"
 
 
-def get_clickable_candidates(page, max_items: int = 20) -> list[dict]:
+def get_clickable_candidates(page, max_items: int = 12) -> list[dict]:
     selectors = "a, button, input[type='submit'], input[type='button']"
-    items = []
+    raw_items = []
 
     loc = page.locator(selectors)
     count = loc.count()
@@ -119,9 +119,6 @@ def get_clickable_candidates(page, max_items: int = 20) -> list[dict]:
     print(f"[DEBUG] raw clickable count: {count}")
 
     for i in range(count):
-        if len(items) >= max_items:
-            break
-
         el = loc.nth(i)
 
         try:
@@ -129,10 +126,7 @@ def get_clickable_candidates(page, max_items: int = 20) -> list[dict]:
                 continue
 
             bbox = el.bounding_box()
-            if bbox is None:
-                continue
-
-            if bbox["width"] < 5 or bbox["height"] < 5:
+            if bbox is None or bbox["width"] < 5 or bbox["height"] < 5:
                 continue
 
             tag = el.evaluate("el => el.tagName.toLowerCase()")
@@ -149,12 +143,10 @@ def get_clickable_candidates(page, max_items: int = 20) -> list[dict]:
                 text = el.get_attribute("title") or ""
             if not text:
                 text = el.get_attribute("value") or ""
-            if not text:
-                text = el.get_attribute("href") or f"{tag}_{i}"
-
             href = el.get_attribute("href")
+            if not text:
+                text = href or f"{tag}_{i}"
 
-            # evaluate on the locator itself
             selector = el.evaluate(
                 """(node, idx) => {
                     node.setAttribute("data-vla-temp-index", String(idx));
@@ -163,13 +155,12 @@ def get_clickable_candidates(page, max_items: int = 20) -> list[dict]:
                 i,
             )
 
-            items.append(
+            raw_items.append(
                 {
-                    "index": len(items) + 1,
-                    "selector": selector,
                     "tag": tag,
                     "text": text[:120],
                     "href": href,
+                    "selector": selector,
                     "rect": bbox,
                 }
             )
@@ -177,6 +168,39 @@ def get_clickable_candidates(page, max_items: int = 20) -> list[dict]:
         except Exception as e:
             print(f"[DEBUG] skipped element {i}: {e}")
             continue
+
+    # Deduplicate by href+text
+    seen = set()
+    deduped = []
+    for item in raw_items:
+        key = ((item["href"] or "").strip(), item["text"].strip().lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+
+    def score(item):
+        text = item["text"].lower()
+        href = (item["href"] or "").lower()
+
+        s = 0
+        if "publish ad" in text: s += 50
+        if "login" in text: s += 40
+        if "register" in text: s += 30
+        if item["tag"] == "button": s += 20
+        if "page=item&id=" in href: s += 25
+        if "search" in text: s += 15
+        if text == "classifieds": s -= 50
+        if "category" in href or "scategory" in href: s -= 10
+        return -s  # lower sorts first
+
+    deduped.sort(key=score)
+    deduped = deduped[:max_items]
+
+    items = []
+    for idx, item in enumerate(deduped, start=1):
+        item["index"] = idx
+        items.append(item)
 
     print(f"[DEBUG] filtered clickable count: {len(items)}")
     return items
