@@ -269,6 +269,8 @@ def main():
                         page,
                         include_status=True,
                         status_text=status_before,
+                        allowed_items=allowed,
+                        max_body_lines=16,
                     )
                     step_prompt = _build_classifieds_prompt(base_prompt, allowed)
                     step_prompt += "\n\nDOM OBSERVATION:\n" + dom_observation
