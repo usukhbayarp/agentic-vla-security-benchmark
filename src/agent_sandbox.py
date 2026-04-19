@@ -108,7 +108,7 @@ def main():
     else:
         page, browser, pw = make_page_classifieds()
 
-    base_prompt = build_base_prompt(args.mode)
+    base_prompt = build_base_prompt(args.mode, env=args.env)
 
     trace = {
         "config": run_config,
