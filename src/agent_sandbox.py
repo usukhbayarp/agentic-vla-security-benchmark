@@ -27,9 +27,35 @@ from browser_env_classifieds import (
     click_selector,
     build_classifieds_mapping_text,
     make_classifieds_set_of_marks_view,
+    CLASSIFIEDS_URL,
 )
 from attacks import apply_attack_if_needed
 from vlm_backend import load_backend
+
+def _page_signature(status_text: str) -> str:
+    """
+    Lightweight stable page signature used for loop detection.
+    Uses the already-logged status summary.
+    """
+    if not status_text:
+        return ""
+    return status_text.strip()
+
+
+def _is_repeat_action_same_page(
+    prev_selector: str | None,
+    curr_selector: str | None,
+    prev_signature: str | None,
+    curr_signature: str | None,
+) -> bool:
+    return (
+        prev_selector is not None
+        and curr_selector is not None
+        and prev_signature is not None
+        and curr_signature is not None
+        and prev_selector == curr_selector
+        and prev_signature == curr_signature
+    )
 
 
 def _classif_prompt_allowed_lines(items: list[dict]) -> str:
@@ -48,6 +74,10 @@ def _build_classifieds_prompt(base: str, items: list[dict]) -> str:
         + "\nValid examples:\nCLICK_INDEX:1\nCLICK_INDEX:2\n"
     )
 
+def _json_safe_allowed_actions(allowed):
+    if isinstance(allowed, set):
+        return sorted(allowed)
+    return allowed
 
 def main():
     parser = argparse.ArgumentParser()
@@ -94,14 +124,27 @@ def main():
 
     run_dir = make_run_dir(project_root / "runs")
 
+    if args.env == "classifieds":
+        ui_meta = {
+            "env": "classifieds",
+            "html": None,
+            "url": CLASSIFIEDS_URL,
+        }
+    else:
+        ui_meta = {
+            "env": "tinydesk",
+            "html": str(html_file),
+            "url": str(html_url),
+        }
+
     run_config = {
         "env": args.env,
-        "ui": {"html": str(html_file), "url": html_url},
         "model": dict(backend_meta),
         "mode": args.mode,
         "attack": dict(attack_config),
         "defense": {"enabled": False, "name": None},
         "max_steps": 6,
+        "ui": ui_meta,
     }
 
     if args.env == "tinydesk":
@@ -126,6 +169,8 @@ def main():
         executed_any = False
         error = None
         violation = False
+        prev_page_sig = None
+        prev_selector_executed = None
 
         for t in range(run_config["max_steps"]):
             assets_used = None
@@ -140,6 +185,7 @@ def main():
                 status_before = read_status_classifieds(page)
                 allowed = allowed_actions_classifieds(page)
 
+            current_page_sig = _page_signature(status_before)
             screenshot_path = None
             dom_screenshot_path = None
             action_highlight_path = None
@@ -276,6 +322,14 @@ def main():
                     step_error = f"parse_failed:{click_parse_type}"
                 elif click_id not in allowed:
                     step_error = f"invalid_action:{click_id}"
+                elif _is_repeat_action_same_page(
+                    prev_selector_executed,
+                    click_id,
+                    prev_page_sig,
+                    current_page_sig,
+                ):
+                    step_error = "repeat_action_same_page"
+                    error = error or step_error
                 else:
                     action_highlight_path = snap_action_highlight(page, run_dir, t, click_id)
                     try:
@@ -291,6 +345,14 @@ def main():
                     step_error = f"parse_failed:{click_parse_type}"
                 elif click_selector_value not in selectors_allowed:
                     step_error = f"invalid_action:{click_selector_value}"
+                elif _is_repeat_action_same_page(
+                    prev_selector_executed,
+                    click_selector_value,
+                    prev_page_sig,
+                    current_page_sig,
+                ):
+                    step_error = "repeat_action_same_page"
+                    error = error or step_error
                 else:
                     action_highlight_path = snap_action_highlight_classifieds(page, run_dir, t, click_selector_value)
                     try:
@@ -331,7 +393,7 @@ def main():
                     "action_highlight": action_highlight_path,
                     "status_before": status_before,
                     "status_after": status_after,
-                    "allowed_actions": allowed,
+                    "allowed_actions": _json_safe_allowed_actions(allowed),
                     "plain_screenshot": plain_screenshot_path,
                     "dom_observation": dom_observation,
                     "som_mapping": som_mapping,
@@ -345,6 +407,13 @@ def main():
                 }
             )
 
+            if executed:
+                prev_selector_executed = click_id if args.env == "tinydesk" else click_selector_value
+                prev_page_sig = current_page_sig
+            
+            if step_error == "repeat_action_same_page":
+                break
+            
             if (args.env == "tinydesk" and is_terminal(status_after)) or (
                 args.env == "classifieds" and is_terminal_classifieds(page)
             ):
