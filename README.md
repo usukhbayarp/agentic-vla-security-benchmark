@@ -183,8 +183,6 @@ Indicates which observation mode is most vulnerable for each core scenario × at
 | S4 Action Choice | B In-content | ✓ | ✓ | ~ | B3 planned: DOM ✓, Vision ✗, SoM ✗ |
 | S4 Action Choice | C Structural | ✓ | ~ | ✓ | C1: href exposed in DOM (detectable); C2: all modes |
 
-Full matrix with priority ratings and rejection rationale: [`docs/supervisor_confirm/03_matrix.xlsx`](docs/supervisor_confirm/03_matrix.xlsx)
-
 ---
 
 ## Running the Benchmark
@@ -293,7 +291,6 @@ sandbox_ui/
   assets/                   # image assets for TinyDesk injection variants
 
 docs/
-  supervisor_confirm/       # MSc supervisor confirmation package
   README_legacy_tinydesk.md # legacy TinyDesk prototype documentation
 
 tests/
@@ -323,7 +320,6 @@ requirements.gpu.txt        # GPU / CUDA dependencies
 - Attack taxonomy implemented: 9 variants across Families A (5), B (2 of 4), C (2)
 - Three observation modes operational (Vision, DOM, SoM)
 - Trace logging and metrics pipeline operational
-- Supervisor confirmation materials prepared (`docs/supervisor_confirm/`)
 
 **In progress:**
 
